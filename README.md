@@ -67,14 +67,14 @@ func main() {
   fmt.Println(testFoo)
   
   // perform find
-	var findResult testFoo
-	filter := &bson.M{
-		"name": "test1",
-	}
-	if err := foo.FindOne(filter, &findResult); err != nil {
+  var findResult testFoo
+  filter := &bson.M{
+    "name": "test1",
+  }
+  if err := foo.FindOne(filter, &findResult); err != nil {
     fmt.Println(err)
-		os.Exit(1)
-	}
+    os.Exit(1)
+  }
   fmt.Println(findResult)
 }
 ```
