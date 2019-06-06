@@ -42,22 +42,22 @@ func main() {
   g := gongo.New("mydbname", clientOptions)
 
 	// define schema and add virtuals
-	testFooSchema := NewSchema(&testFoo{})
-	testFooSchema.Virtual(&VirtualConfig{
-		Name: "id",
-		Get:  helpers.VirtualGetObjectIDAsHexString("_id"),
-		Set:  helpers.VirtualSetObjectIDFromHexString,
-	})
+  testFooSchema := NewSchema(&testFoo{})
+  testFooSchema.Virtual(&VirtualConfig{
+    Name: "id",
+    Get:  helpers.VirtualGetObjectIDAsHexString("_id"),
+    Set:  helpers.VirtualSetObjectIDFromHexString,
+  })
 
-	// create model
-	foo, _ := g.Model(testFooSchema)
+  // create model
+  foo, _ := g.Model(testFooSchema)
 
-	// connect to the database
-	if err := g.Connect(); err != nil {
-		t.Errorf("failed to connect: %s", err.Error())
-		return
+  // connect to the database
+  if err := g.Connect(); err != nil {
+    t.Errorf("failed to connect: %s", err.Error())
+    return
   }
-  
+
   // perform insert
   var insertResult testFoo
   if err := foo.InsertOne(bson.M{"name": "bar"}, &insertResult); err != nil {
