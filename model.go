@@ -14,6 +14,7 @@ import (
 type ModelOptions struct {
 	Name          string
 	DontPluralize bool
+	DontSnakeCase bool
 }
 
 // Model creates a model from the struct
@@ -71,6 +72,39 @@ func (c *Model) Get(fieldName string) interface{} {
 		}
 	}
 	return nil
+}
+
+// Create creates a new model, saves it, and returns the new model
+func (c *Model) Create(doc bson.M) (*Model, error) {
+	m := c.New(&doc)
+	if err := m.Save(); err != nil {
+		return m, err
+	}
+	return m, nil
+}
+
+// Hydrate hydrates the model with data from the database
+func (c *Model) Hydrate(filter *bson.M) error {
+	return c.HydrateWithTimeout(filter, nil)
+}
+
+// HydrateWithTimeout hydrates the model with data from the database
+func (c *Model) HydrateWithTimeout(filter *bson.M, timeout *int) error {
+	if filter == nil {
+		return fmt.Errorf("no filter provided")
+	}
+
+	ctx, cancelFunc := newContext(timeout)
+	defer cancelFunc()
+
+	// apply virtuals to the filter
+	query, err := c.applyVirtualQueryDocument(filter)
+	if err != nil {
+		return err
+	}
+
+	// decode to the document
+	return c.Collection().FindOne(ctx, query).Decode(c.document)
 }
 
 // Database returns the database object

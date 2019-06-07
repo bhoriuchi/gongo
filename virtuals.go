@@ -24,18 +24,19 @@ type VirtualConfig struct {
 }
 
 // Virtual adds a virtual field config
-func (c *Schema) Virtual(config *VirtualConfig) {
+func (c *Schema) Virtual(config *VirtualConfig) *Schema {
 	if config == nil || config.Name == "" {
-		return
+		return c
 	}
 	if c.virtuals == nil {
 		c.virtuals = &VirtualFieldMap{}
 	}
 	virtuals := *c.virtuals
 	if _, ok := virtuals[config.Name]; ok {
-		return
+		return c
 	}
 	virtuals[config.Name] = config
+	return c
 }
 
 // apply virtual setters creates a new document by setting virtual fields

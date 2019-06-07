@@ -124,7 +124,10 @@ func (c *Gongo) Model(schema *Schema, opts ...*ModelOptions) (*Model, error) {
 	}
 
 	// format the collection name
-	collectionName := helpers.ToSnakeCase(options.Name)
+	collectionName := options.Name
+	if !options.DontSnakeCase {
+		collectionName = helpers.ToSnakeCase(collectionName)
+	}
 	if !options.DontPluralize {
 		collectionName = pluralize.Plural(collectionName)
 	}

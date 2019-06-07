@@ -30,8 +30,8 @@ func NewSchema(referenceType interface{}) *Schema {
 		refType:  refType,
 		virtuals: &VirtualFieldMap{},
 		middleware: &middlewareConfig{
-			pre:  make([]*PreMiddleware, 0),
-			post: make([]*PostMiddleware, 0),
+			pre:  make(map[int]*PreMiddleware),
+			post: make(map[int]*PostMiddleware),
 		},
 	}
 

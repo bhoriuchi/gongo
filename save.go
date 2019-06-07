@@ -13,6 +13,8 @@ func (c *Model) Save() error {
 
 // SaveWithTimeout saves the document
 func (c *Model) SaveWithTimeout(timeout *int) error {
+	var opError error
+
 	// apply virtuals
 	document, err := c.schema.applyVirtualSetters(*c.document)
 	if err != nil {
@@ -22,6 +24,11 @@ func (c *Model) SaveWithTimeout(timeout *int) error {
 
 	// validate the document
 	if err := c.Validate(); err != nil {
+		return err
+	}
+
+	// apply pre-middleware
+	if err := c.schema.applyPreMiddleware("save", *c.document, c); err != nil {
 		return err
 	}
 
@@ -40,22 +47,29 @@ func (c *Model) SaveWithTimeout(timeout *int) error {
 		}
 		result, err := c.Collection().UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$set": update})
 		if err != nil {
-			return err
+			opError = err
 		} else if result.MatchedCount < 1 {
-			return fmt.Errorf("failed to update %s", id)
+			opError = fmt.Errorf("failed to update %s", id)
 		}
 
 	} else {
 		// insert the document
 		result, err := c.Collection().InsertOne(ctx, document)
 		if err != nil {
-			return err
+			opError = err
+		} else {
+			if result.InsertedID == nil {
+				opError = fmt.Errorf("insert failed, no ObjectId returned")
+			} else {
+				d["_id"] = result.InsertedID
+			}
 		}
-
-		if result.InsertedID == nil {
-			return fmt.Errorf("insert failed, no ObjectId returned")
-		}
-		d["_id"] = result.InsertedID
 	}
-	return nil
+
+	// apply post middleware
+	if err := c.schema.applyPostMiddleware("save", d, c, opError); err != nil {
+		opError = err
+	}
+
+	return opError
 }

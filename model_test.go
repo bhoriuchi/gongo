@@ -25,11 +25,22 @@ func TestModel(t *testing.T) {
 
 	// define schema
 	testFooSchema := NewSchema(&testFoo{})
-	testFooSchema.Virtual(&VirtualConfig{
-		Name: "id",
-		Get:  helpers.VirtualGetObjectIDAsHexString("_id"),
-		Set:  helpers.VirtualSetObjectID("_id"),
-	})
+	testFooSchema.
+		Virtual(&VirtualConfig{
+			Name: "id",
+			Get:  helpers.VirtualGetObjectIDAsHexString("_id"),
+			Set:  helpers.VirtualSetObjectID("_id"),
+		}).
+		Pre("save", func(doc bson.M, model *Model) error {
+			name := model.Get("name")
+			model.Set("name", fmt.Sprintf("%s1", name))
+			return nil
+		}).
+		Pre("save", func(doc bson.M, model *Model) error {
+			name := model.Get("name")
+			model.Set("name", fmt.Sprintf("%s2", name))
+			return nil
+		})
 
 	// create models
 	foo, err := g.Model(testFooSchema)
