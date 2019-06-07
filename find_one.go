@@ -3,6 +3,7 @@ package gongo
 import (
 	"reflect"
 
+	"github.com/bhoriuchi/gongo/helpers"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -32,7 +33,7 @@ func (c *Model) FindOneWithTimeout(
 	defer cancelFunc()
 
 	// apply virtuals to the filter
-	query, err := c.schema.applyVirtualQueryDocument(filter)
+	query, err := c.applyVirtualQueryDocument(filter)
 	if err != nil {
 		return err
 	}
@@ -57,5 +58,5 @@ func (c *Model) FindOneWithTimeout(
 	}
 
 	// finally convert the updated document to the target interface
-	return toInterface(temp, target)
+	return helpers.ToInterface(temp, target)
 }

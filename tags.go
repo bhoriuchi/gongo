@@ -1,6 +1,15 @@
 package gongo
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/bhoriuchi/gongo/helpers"
+)
+
+// required tags
+var requiredTagIDs = []string{"name", "required", "unique"}
 
 // FieldTagMap a map of fields containg tag mappings
 type fieldTagMap map[string]*tagMap
@@ -9,54 +18,44 @@ type fieldTagMap map[string]*tagMap
 type tagMap map[string]string
 
 // Get gets a tag value from the map
-func (c *tagMap) get(tagName string) *string {
+func (c *tagMap) getString(tagName string) (string, bool) {
 	tm := *c
 	val, ok := tm[tagName]
+	return val, ok
+}
+
+// gets a list of values
+func (c *tagMap) getList(tagName string) ([]string, bool) {
+	val, ok := c.getString(tagName)
+	if !ok || val == "" {
+		return nil, ok
+	}
+	list := strings.Split(val, ",")
+	return list, ok
+}
+
+// gets the bool value from the tag map
+func (c *tagMap) getBool(tagName string) (bool, bool) {
+	val, ok := c.getString(tagName)
 	if !ok {
-		return nil
+		return false, ok
 	}
-	return &val
-}
-
-// Field gets the tagmap at a specific field
-func (c *fieldTagMap) field(fieldName string) *tagMap {
-	fm := *c
-	return fm.findOneByName("json", fieldName)
-}
-
-// Get gets a tag from a specific field
-func (c *fieldTagMap) Get(fieldName, tagName string) *string {
-	if tm := c.field(fieldName); tm != nil {
-		return tm.get(tagName)
+	b, err := strconv.ParseBool(val)
+	if err != nil {
+		return false, ok
 	}
-	return nil
+	return b, ok
 }
 
 // FindOneByName finds a tag map by match the tag with value
 func (c *fieldTagMap) findOneByName(tagName, tagValue string) *tagMap {
 	fm := *c
 	for _, tm := range fm {
-		val := tm.get(tagName)
-		if val != nil && *val == tagValue {
+		if _, ok := tm.getString(tagName); ok {
 			return tm
 		}
 	}
 	return nil
-}
-
-// Values returns the values of a tag name from all fields
-func (c *fieldTagMap) values(tagName string) *[]string {
-	v := make([]string, 0)
-	fm := *c
-	for _, tm := range fm {
-		value := tm.get(tagName)
-		if value != nil {
-			fieldName := tm.get("json")
-			v = append(v, *fieldName)
-		}
-	}
-
-	return &v
 }
 
 // MapStructTags maps struct tags to their values
@@ -66,7 +65,7 @@ func mapStructTags(structure interface{}, tagNames *[]string) *fieldTagMap {
 	if structure == nil {
 		return &fm
 	}
-	sv := getElement(structure)
+	sv := helpers.GetElement(structure)
 	st := sv.Type()
 
 	for i := 0; i < sv.NumField(); i++ {
@@ -85,69 +84,57 @@ func mapStructTags(structure interface{}, tagNames *[]string) *fieldTagMap {
 	return &fm
 }
 
-// gets the actual field name if field is a virtual
-func getActualFieldName(tagMap *tagMap) *string {
-	virtual := tagMap.get("mongo_virtual")
-	if virtual != nil && *virtual != "" {
-		vField := *virtual
-		if vField[:1] == "$" {
-			name := vField[1:]
-			return &name
-		}
-	} else {
-		fieldName := tagMap.get("json")
-		if fieldName != nil && *fieldName != "" {
-			return fieldName
-		}
-	}
-	return nil
-}
-
 // FieldTagDefinition defines the field tags
-type FieldTagDefinition struct {
-	Name      string
-	OmitIf    string
-	Required  string
-	Unique    string
-	MongoType string
-	PrimaryID string
-}
+// each value is used to lookup the tag name
+// responsible for the named configuration
+type FieldTagDefinition map[string]string
 
 // Validate validates the field tag definition
 func (c *FieldTagDefinition) Validate() error {
-	tagMap := make(map[string]bool)
-	v := getElement(c)
-	for i := 0; i < v.NumField(); i++ {
-		value := v.Field(i).Interface().(string)
-		if value == "" {
-			return fmt.Errorf("invalid tag value found")
-		} else if _, ok := tagMap[value]; ok {
-			return fmt.Errorf("tag value %s used multiple times", value)
+	m := *c
+	valueMap := make(map[string]bool)
+
+	// validate all tag ids have values and there are
+	// no duplicate values
+	for id, tag := range m {
+		if tag == "" {
+			return fmt.Errorf("tag for %q cannot have an empty value", id)
+		} else if _, ok := valueMap[tag]; ok {
+			return fmt.Errorf("tag %q has been defined multiple times", tag)
 		}
-		tagMap[value] = true
+		valueMap[tag] = true
 	}
+
+	// validate required tags exist
+	for _, id := range requiredTagIDs {
+		if _, ok := m[id]; !ok {
+			return fmt.Errorf("required tag id %q not defined", id)
+		}
+	}
+
 	return nil
 }
 
 // Tags retuns all the field tag values
 func (c *FieldTagDefinition) Tags() *[]string {
 	tags := make([]string, 0)
-	v := getElement(c)
-	for i := 0; i < v.NumField(); i++ {
-		value := v.Field(i).Interface().(string)
-		tags = append(tags, value)
+	for _, tag := range *c {
+		tags = append(tags, tag)
 	}
 	return &tags
+}
+
+// Get gets a tag
+func (c *FieldTagDefinition) Get(id string) string {
+	m := *c
+	return m[id]
 }
 
 // DefaultFieldTagDefinition returns a default field taf definition
 func DefaultFieldTagDefinition() *FieldTagDefinition {
 	return &FieldTagDefinition{
-		Name:      "json",
-		OmitIf:    "omit_if",
-		Required:  "required",
-		Unique:    "unique",
-		MongoType: "mongo_type",
-		PrimaryID: "primary_id",
+		"name":     "json",
+		"required": "required",
+		"unique":   "unique",
 	}
 }

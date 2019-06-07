@@ -5,35 +5,66 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bhoriuchi/gongo/helpers"
 	"github.com/gertd/go-pluralize"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// New creates a new gongo instance
-func New(database string, options *options.ClientOptions) *Gongo {
-	return &Gongo{
-		database:    database,
-		options:     options,
-		models:      make(map[string]*Model),
-		fieldTagDef: DefaultFieldTagDefinition(),
-		client:      nil,
-	}
-}
-
 // Gongo main interface
 type Gongo struct {
+	connected   bool
 	database    string
 	options     *options.ClientOptions
 	models      map[string]*Model
 	fieldTagDef *FieldTagDefinition
 	client      *mongo.Client
+	hub         chan string
 }
 
-// Connect connects to mongodb
+// New creates a new gongo instance
+func New(database string, options *options.ClientOptions) *Gongo {
+	g := &Gongo{
+		connected:   false,
+		database:    database,
+		options:     options,
+		models:      make(map[string]*Model),
+		fieldTagDef: DefaultFieldTagDefinition(),
+		client:      nil,
+		hub:         make(chan string),
+	}
+
+	// perform tasks on channel messages
+	go func() {
+		switch msg := <-g.hub; msg {
+		case "connected":
+			for _, model := range g.models {
+				model.createIndexes()
+			}
+		}
+	}()
+
+	return g
+}
+
+// WithTagDefinition adds a custom tag definition
+func (c *Gongo) WithTagDefinition(definition *FieldTagDefinition) (*Gongo, error) {
+	if definition == nil {
+		return c, fmt.Errorf("no tag definition provided")
+	} else if err := definition.Validate(); err != nil {
+		return c, err
+	}
+	c.fieldTagDef = definition
+	return c, nil
+}
+
+// Connect connects to mongodb, this should be performed
+// after all schema and model setup has taken place
 func (c *Gongo) Connect() error {
 	if c.database == "" {
 		return fmt.Errorf("no database specified")
+	} else if c.connected {
+		return fmt.Errorf("already connected")
 	}
 
 	// connect the client
@@ -43,13 +74,13 @@ func (c *Gongo) Connect() error {
 	}
 	c.client = client
 
-	// create indexes for each model
-	for _, model := range c.models {
-		if err := model.createIndexes(); err != nil {
-			return err
-		}
+	// validate the field tag definition
+	if err := c.fieldTagDef.Validate(); err != nil {
+		return err
 	}
 
+	c.connected = true
+	c.hub <- "connected"
 	return nil
 }
 
@@ -75,7 +106,7 @@ func (c *Gongo) Model(schema *Schema, opts ...*ModelOptions) (*Model, error) {
 	}
 
 	// format the collection name
-	collectionName := toSnakeCase(options.Name)
+	collectionName := helpers.ToSnakeCase(options.Name)
 	if !options.DontPluralize {
 		collectionName = pluralize.Plural(collectionName)
 	}

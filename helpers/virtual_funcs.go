@@ -7,21 +7,29 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-// VirtualSetObjectIDFromHexString sets a virtual object id from a hex string
-func VirtualSetObjectIDFromHexString(value interface{}, doc bson.M) error {
-	if value == nil {
+// VirtualSetObjectID sets an object id
+func VirtualSetObjectID(fieldName string) func(value interface{}, doc bson.M) error {
+	return func(value interface{}, doc bson.M) error {
+		if fieldName == "" {
+			return fmt.Errorf("VirtualSetObjectID has no field name specified")
+		}
+		if IsObjectID(value) {
+			doc[fieldName] = value
+			return nil
+		}
+
+		id := fmt.Sprintf("%v", value)
+		if id == "" {
+			return fmt.Errorf("no object id specified")
+		}
+		objectID, err := primitive.ObjectIDFromHex(id)
+		if err != nil {
+			return err
+		}
+		doc[fieldName] = objectID
+
 		return nil
 	}
-	id := value.(string)
-	if id == "" {
-		return fmt.Errorf("no hex ID specified")
-	}
-	objectID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		return err
-	}
-	doc["_id"] = objectID
-	return nil
 }
 
 // VirtualGetObjectIDAsHexString returns the specified field
@@ -37,8 +45,15 @@ func VirtualGetObjectIDAsHexString(fieldName string) func(doc bson.M) (interface
 		} else if v == nil {
 			return nil, fmt.Errorf("field %q not set", fieldName)
 		}
-		oid := v.(primitive.ObjectID)
-		return oid.Hex(), nil
+
+		// if its an object id convert to hex
+		if IsObjectID(v) {
+			oid := v.(primitive.ObjectID)
+			return oid.Hex(), nil
+		}
+
+		// otherwise just try to return the string
+		return fmt.Sprintf("%v", v), nil
 	}
 }
 

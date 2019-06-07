@@ -1,8 +1,6 @@
 package gongo
 
 import (
-	"reflect"
-
 	"go.mongodb.org/mongo-driver/bson"
 )
 
@@ -47,87 +45,4 @@ func (c *Schema) applyVirtualGetters(doc bson.M) error {
 		doc[v.Name] = value
 	}
 	return nil
-}
-
-// apply virtual setters creates a new document by setting virtual fields
-// and keeping the non-virtual fields
-func (c *Schema) applyVirtualSetters(doc bson.M) (*bson.M, error) {
-	virtuals := *c.virtuals
-	newDoc := bson.M{}
-	for k, v := range doc {
-		if config, ok := virtuals[k]; ok {
-			if err := config.Set(v, newDoc); err != nil {
-				return nil, err
-			}
-		} else {
-			newDoc[k] = v
-		}
-	}
-	return &newDoc, nil
-}
-
-// converts the filter document to a valid one by replacing string versions of object ids
-// and pointing virtual values to the right keys
-func (c *Schema) applyVirtualQueryDocument(filter *bson.M) (*bson.M, error) {
-	if filter == nil {
-		return &bson.M{}, nil
-	}
-	query, err := c.deepQueryBuild(*filter)
-	if err != nil {
-		return nil, err
-	}
-	newFilter := query.(bson.M)
-	return &newFilter, nil
-}
-
-// performs a deep build of the query
-func (c *Schema) deepQueryBuild(obj interface{}) (interface{}, error) {
-	// check for object id and return right away
-	if isObjectID(obj) {
-		return obj, nil
-	}
-
-	// look at each kind
-	switch kind := getKind(obj); kind {
-
-	// handle slice/array
-	case reflect.Slice, reflect.Array:
-		s := reflect.ValueOf(obj)
-		result := make([]interface{}, 0)
-		for i := 0; i < s.Len(); i++ {
-			value, err := c.deepQueryBuild(s.Index(i).Interface())
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, value)
-		}
-		return result, nil
-
-	// handle maps
-	case reflect.Map:
-		result := bson.M{}
-		virtuals := *c.virtuals
-		original := reflect.ValueOf(obj)
-		for _, key := range original.MapKeys() {
-			k := key.Interface().(string)
-			v := original.MapIndex(key).Interface()
-			// get the updated value by calling deep query build on it
-			value, err := c.deepQueryBuild(v)
-			if err != nil {
-				return nil, err
-			}
-
-			// if the value is virtual, use the setter function
-			// otherwise just set the value as is
-			if config, ok := virtuals[k]; ok {
-				if err := config.Set(value, result); err != nil {
-					return nil, err
-				}
-			} else {
-				result[k] = value
-			}
-		}
-	}
-
-	return obj, nil
 }

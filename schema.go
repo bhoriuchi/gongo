@@ -3,6 +3,8 @@ package gongo
 import (
 	"fmt"
 	"reflect"
+
+	"github.com/bhoriuchi/gongo/helpers"
 )
 
 // Schema creates a new schema
@@ -20,8 +22,8 @@ func NewSchema(referenceType interface{}) *Schema {
 		return nil
 	}
 
-	refType := getType(referenceType)
-	typeName := getTypeName(referenceType)
+	refType := helpers.GetType(referenceType)
+	typeName := helpers.GetTypeName(referenceType)
 
 	schema := &Schema{
 		typeName:    typeName,

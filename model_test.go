@@ -3,12 +3,10 @@ package gongo
 import (
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/bhoriuchi/gongo/helpers"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -28,7 +26,7 @@ func TestModel(t *testing.T) {
 	testFooSchema.Virtual(&VirtualConfig{
 		Name: "id",
 		Get:  helpers.VirtualGetObjectIDAsHexString("_id"),
-		Set:  helpers.VirtualSetObjectIDFromHexString,
+		Set:  helpers.VirtualSetObjectID("_id"),
 	})
 
 	// create models
@@ -43,13 +41,8 @@ func TestModel(t *testing.T) {
 		t.Errorf("failed to connect: %s", err.Error())
 		return
 	}
-	oid1, _ := primitive.ObjectIDFromHex("5cf991e52dc52d57d88bd3c2")
-	el := getElement(oid1)
-	ot := el.Type() == reflect.TypeOf(primitive.ObjectID([12]byte{}))
 
-	fmt.Println(ot)
 	// perform an insert
-
 	var insertResult testFoo
 	if err := foo.InsertOne(bson.M{"name": "bar"}, &insertResult); err != nil {
 		t.Errorf("insert error: %s", err.Error())
