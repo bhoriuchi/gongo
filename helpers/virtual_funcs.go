@@ -17,7 +17,6 @@ func VirtualSetObjectID(fieldName string) func(value interface{}, doc bson.M) er
 			doc[fieldName] = value
 			return nil
 		}
-
 		id := fmt.Sprintf("%v", value)
 		if id == "" {
 			return fmt.Errorf("no object id specified")
@@ -26,8 +25,8 @@ func VirtualSetObjectID(fieldName string) func(value interface{}, doc bson.M) er
 		if err != nil {
 			return err
 		}
-		doc[fieldName] = objectID
 
+		doc[fieldName] = objectID
 		return nil
 	}
 }
@@ -60,4 +59,18 @@ func VirtualGetObjectIDAsHexString(fieldName string) func(doc bson.M) (interface
 // VirtualSetNoop does nothing, you're welcome
 func VirtualSetNoop(value interface{}, doc bson.M) error {
 	return nil
+}
+
+// VirtualGetWithDefault gets the specified field or returns default if set
+func VirtualGetWithDefault(fieldName string, defaultValue interface{}) func(doc bson.M) (interface{}, error) {
+	return func(doc bson.M) (interface{}, error) {
+		value, ok := doc[fieldName]
+		if ok {
+			return value, nil
+		}
+		if defaultValue != nil {
+			return defaultValue, nil
+		}
+		return nil, fmt.Errorf("field %q was not found and no default values was provided", fieldName)
+	}
 }

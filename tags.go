@@ -9,7 +9,7 @@ import (
 )
 
 // required tags
-var requiredTagIDs = []string{"name", "required", "unique"}
+var requiredTagIDs = []string{"name", "required", "unique", "validate"}
 
 // FieldTagMap a map of fields containg tag mappings
 type fieldTagMap map[string]*tagMap
@@ -136,5 +136,6 @@ func DefaultFieldTagDefinition() *FieldTagDefinition {
 		"name":     "json",
 		"required": "required",
 		"unique":   "unique",
+		"validate": "validate",
 	}
 }

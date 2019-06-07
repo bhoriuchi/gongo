@@ -1,7 +1,6 @@
 package gongo
 
 import (
-	"fmt"
 	"reflect"
 
 	"github.com/bhoriuchi/gongo/helpers"
@@ -9,11 +8,11 @@ import (
 
 // Schema creates a new schema
 type Schema struct {
-	typeName    string
-	ref         interface{}
-	refType     reflect.Type
-	fieldTagDef *FieldTagDefinition
-	virtuals    *VirtualFieldMap
+	typeName   string
+	ref        interface{}
+	refType    reflect.Type
+	virtuals   *VirtualFieldMap
+	middleware *middlewareConfig
 }
 
 // NewSchema creates a new schema
@@ -26,24 +25,15 @@ func NewSchema(referenceType interface{}) *Schema {
 	typeName := helpers.GetTypeName(referenceType)
 
 	schema := &Schema{
-		typeName:    typeName,
-		ref:         referenceType,
-		refType:     refType,
-		fieldTagDef: DefaultFieldTagDefinition(),
-		virtuals:    &VirtualFieldMap{},
+		typeName: typeName,
+		ref:      referenceType,
+		refType:  refType,
+		virtuals: &VirtualFieldMap{},
+		middleware: &middlewareConfig{
+			pre:  make([]*PreMiddleware, 0),
+			post: make([]*PostMiddleware, 0),
+		},
 	}
 
 	return schema
-}
-
-// WithFieldTags sets the field tag definition to use
-// this is useful if the default tags conflict with other packages
-func (c *Schema) WithFieldTags(definition *FieldTagDefinition) error {
-	if definition == nil {
-		return fmt.Errorf("no tag definition specified")
-	} else if err := definition.Validate(); err != nil {
-		return err
-	}
-	c.fieldTagDef = definition
-	return nil
 }

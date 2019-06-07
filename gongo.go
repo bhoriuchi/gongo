@@ -17,8 +17,10 @@ type Gongo struct {
 	database    string
 	options     *options.ClientOptions
 	models      map[string]*Model
+	validators  map[string]ValidateFunc
 	fieldTagDef *FieldTagDefinition
 	client      *mongo.Client
+	log         Log
 	hub         chan string
 }
 
@@ -29,8 +31,10 @@ func New(database string, options *options.ClientOptions) *Gongo {
 		database:    database,
 		options:     options,
 		models:      make(map[string]*Model),
+		validators:  make(map[string]ValidateFunc),
 		fieldTagDef: DefaultFieldTagDefinition(),
 		client:      nil,
+		log:         Log{},
 		hub:         make(chan string),
 	}
 
@@ -38,8 +42,14 @@ func New(database string, options *options.ClientOptions) *Gongo {
 	go func() {
 		switch msg := <-g.hub; msg {
 		case "connected":
+			g.log.Debug("connected to mongodb")
 			for _, model := range g.models {
-				model.createIndexes()
+				if !model.createdIndexes {
+					g.log.Debugf("creating indexes for %s", model.collectionName)
+					if err := model.createIndexes(); err != nil {
+						g.log.Errorf("CreateIndex on %q error: %s", model.collectionName, err.Error())
+					}
+				}
 			}
 		}
 	}()
@@ -47,15 +57,23 @@ func New(database string, options *options.ClientOptions) *Gongo {
 	return g
 }
 
+// WithLogger sets a logger
+func (c *Gongo) WithLogger(logger Logger) *Gongo {
+	c.log = Log{logger: logger}
+	return c
+}
+
 // WithTagDefinition adds a custom tag definition
-func (c *Gongo) WithTagDefinition(definition *FieldTagDefinition) (*Gongo, error) {
+func (c *Gongo) WithTagDefinition(definition *FieldTagDefinition) *Gongo {
 	if definition == nil {
-		return c, fmt.Errorf("no tag definition provided")
+		c.log.Error("WithTagDefinition: no tag definition provided")
+		return c
 	} else if err := definition.Validate(); err != nil {
-		return c, err
+		c.log.Errorf("WithTagDefinition: %s", err.Error())
+		return c
 	}
 	c.fieldTagDef = definition
-	return c, nil
+	return c
 }
 
 // Connect connects to mongodb, this should be performed
@@ -116,19 +134,32 @@ func (c *Gongo) Model(schema *Schema, opts ...*ModelOptions) (*Model, error) {
 		return nil, fmt.Errorf("type %q has already been registered", schema.typeName)
 	}
 
+	// create field tag map
+	fieldTagMap := mapStructTags(schema.ref, c.fieldTagDef.Tags())
+
 	// create the model
 	// field tags are mapped at model registration because
 	// the schema allows for the tag definition to be overriden
 	model := &Model{
 		schema:         schema,
 		collectionName: collectionName,
+		createdIndexes: false,
 		gongo:          c,
-		fieldTagMap:    mapStructTags(schema.refType, schema.fieldTagDef.Tags()),
+		fieldTagMap:    fieldTagMap,
 		baseModel:      nil,
 		document:       nil,
 	}
 
 	c.models[schema.typeName] = model
+
+	// create indexes if connected
+	if c.connected && !model.createdIndexes {
+		c.log.Debugf("creating indexes for %s", model.collectionName)
+		if err := model.createIndexes(); err != nil {
+			c.log.Errorf("CreateIndex on %q error: %s", model.collectionName, err.Error())
+		}
+	}
+
 	return model, nil
 }
 

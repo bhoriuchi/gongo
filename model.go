@@ -3,7 +3,6 @@ package gongo
 import (
 	"context"
 	"fmt"
-	"reflect"
 
 	"github.com/bhoriuchi/gongo/helpers"
 	"go.mongodb.org/mongo-driver/bson"
@@ -21,6 +20,7 @@ type ModelOptions struct {
 type Model struct {
 	schema         *Schema
 	collectionName string
+	createdIndexes bool
 	gongo          *Gongo
 	fieldTagMap    *fieldTagMap
 	baseModel      *Model
@@ -28,7 +28,11 @@ type Model struct {
 }
 
 // New creates a new instance of a model
-func (c *Model) New(document bson.M) *Model {
+func (c *Model) New(document *bson.M) *Model {
+	if document == nil {
+		document = &bson.M{}
+	}
+
 	// reference the base model
 	baseModel := c
 	if c.baseModel != nil {
@@ -39,12 +43,34 @@ func (c *Model) New(document bson.M) *Model {
 	model := Model{
 		schema:         c.schema,
 		collectionName: c.collectionName,
+		createdIndexes: baseModel.createdIndexes,
 		gongo:          c.gongo,
+		fieldTagMap:    c.fieldTagMap,
 		baseModel:      baseModel,
-		document:       &document,
+		document:       document,
 	}
 
 	return &model
+}
+
+// Set sets a field on the document
+func (c *Model) Set(fieldName string, value interface{}) *Model {
+	if c.document != nil && fieldName != "" {
+		doc := *c.document
+		doc[fieldName] = value
+	}
+	return c
+}
+
+// Get gets the field value from the document
+func (c *Model) Get(fieldName string) interface{} {
+	if c.document != nil && fieldName != "" {
+		doc := *c.document
+		if val, ok := doc[fieldName]; ok {
+			return val
+		}
+	}
+	return nil
 }
 
 // Database returns the database object
@@ -57,12 +83,36 @@ func (c *Model) Collection() *mongo.Collection {
 	return c.Database().Collection(c.collectionName)
 }
 
+// Decode decodes the document to the target
+func (c *Model) Decode(target interface{}) error {
+	// create a copy of the internal document to modify
+	// with the virtual getters
+	newDoc := c.copyDocument()
+	if err := c.schema.applyVirtualGetters(*newDoc); err != nil {
+		return err
+	}
+
+	// finally decode to the provided interface
+	return helpers.ToInterface(newDoc, target)
+}
+
 // checks if the current model is the base model
 // this is useful because the base model should not
 // be used to perform database operations
 // it should only be used as a reference
 func (c *Model) isBaseModel() bool {
 	return c.baseModel == nil
+}
+
+// copyDocument creates a copy of the document
+func (c *Model) copyDocument() *bson.M {
+	newDoc := bson.M{}
+	if c.document != nil {
+		for k, v := range *c.document {
+			newDoc[k] = v
+		}
+	}
+	return &newDoc
 }
 
 // creates indexes
@@ -72,8 +122,8 @@ func (c *Model) createIndexes() error {
 	}
 	fm := *c.fieldTagMap
 	for _, tm := range fm {
-		fieldName, hasName := tm.getString(c.schema.fieldTagDef.Get("name"))
-		uniqKeys, isUniq := tm.getList(c.schema.fieldTagDef.Get("unique"))
+		fieldName, hasName := tm.getString(c.gongo.fieldTagDef.Get("name"))
+		uniqKeys, isUniq := tm.getList(c.gongo.fieldTagDef.Get("unique"))
 
 		// setup unique index
 		if isUniq && len(uniqKeys) > 0 {
@@ -106,88 +156,4 @@ func (c *Model) createIndexes() error {
 		}
 	}
 	return nil
-}
-
-// apply virtual setters creates a new document by setting virtual fields
-// and keeping the non-virtual fields
-func (c *Schema) applyVirtualSetters(doc bson.M) (*bson.M, error) {
-	virtuals := *c.virtuals
-	newDoc := bson.M{}
-	for k, v := range doc {
-		if config, ok := virtuals[k]; ok {
-			if err := config.Set(v, newDoc); err != nil {
-				return nil, err
-			}
-		} else {
-			newDoc[k] = v
-		}
-	}
-	return &newDoc, nil
-}
-
-// converts the filter document to a valid one by replacing string versions of object ids
-// and pointing virtual values to the right keys
-func (c *Model) applyVirtualQueryDocument(filter *bson.M) (*bson.M, error) {
-	if filter == nil {
-		return &bson.M{}, nil
-	}
-	query, err := c.deepQueryBuild(*filter)
-	if err != nil {
-		return nil, err
-	}
-	newFilter := query.(bson.M)
-	return &newFilter, nil
-}
-
-// performs a deep build of the query
-func (c *Model) deepQueryBuild(obj interface{}) (interface{}, error) {
-	// check for object id and return right away
-	if helpers.IsObjectID(obj) {
-		return obj, nil
-	}
-
-	// look at each kind
-	switch kind := helpers.GetKind(obj); kind {
-
-	// handle slice/array
-	case reflect.Slice, reflect.Array:
-		s := reflect.ValueOf(obj)
-		result := make([]interface{}, 0)
-		for i := 0; i < s.Len(); i++ {
-			value, err := c.deepQueryBuild(s.Index(i).Interface())
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, value)
-		}
-		return result, nil
-
-	// handle maps
-	case reflect.Map:
-		result := bson.M{}
-		virtuals := *c.schema.virtuals
-		original := reflect.ValueOf(obj)
-		for _, key := range original.MapKeys() {
-			k := key.Interface().(string)
-			v := original.MapIndex(key).Interface()
-
-			// get the updated value by calling deep query build on it
-			value, err := c.deepQueryBuild(v)
-			if err != nil {
-				return nil, err
-			}
-
-			// if the value is virtual, use the setter function
-			// otherwise just set the value as is
-			if config, ok := virtuals[k]; ok {
-				if err := config.Set(value, result); err != nil {
-					return nil, err
-				}
-			} else {
-				result[k] = value
-			}
-		}
-	}
-
-	return obj, nil
 }
