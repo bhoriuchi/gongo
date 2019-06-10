@@ -17,16 +17,31 @@ type PostMiddleware struct {
 }
 
 // PreMiddlewareFunc middleware for document
-type PreMiddlewareFunc func(documentOrQuery bson.M, model *Model) error
+type PreMiddlewareFunc func(documentOrQuery bson.M) error
 
 // PostMiddlewareFunc middleware for post
-type PostMiddlewareFunc func(document bson.M, model *Model, err error) error
+type PostMiddlewareFunc func(document bson.M, err error) error
 
 // middleware is kept as a map with integer keys to ensure
 // middlewares are called in the order they were registered
 type middlewareConfig struct {
 	pre  map[int]*PreMiddleware
 	post map[int]*PostMiddleware
+}
+
+func (c *middlewareConfig) copy() middlewareConfig {
+	pre := make(map[int]*PreMiddleware)
+	post := make(map[int]*PostMiddleware)
+	for k, v := range c.pre {
+		pre[k] = v
+	}
+	for k, v := range c.post {
+		post[k] = v
+	}
+	return middlewareConfig{
+		pre:  pre,
+		post: post,
+	}
 }
 
 // Pre adds pre middleware
@@ -74,18 +89,18 @@ func (c *Schema) Post(operation string, handler PostMiddlewareFunc, async ...*bo
 }
 
 // apply the pre middleware
-func (c *Schema) applyPreMiddleware(operation string, documentOrQuery bson.M, model *Model) error {
+func (c *Schema) applyPreMiddleware(operation string, documentOrQuery bson.M) error {
 	// loop using integer iterator to keep order
 	for i := 0; i < len(c.middleware.pre); i++ {
 		if mw, ok := c.middleware.pre[i]; ok {
 			if mw.Operation == operation {
 				if !mw.Async {
-					if err := mw.Handler(documentOrQuery, model); err != nil {
+					if err := mw.Handler(documentOrQuery); err != nil {
 						return err
 					}
 				} else {
 					// run async as goroutine
-					go mw.Handler(documentOrQuery, model)
+					go mw.Handler(documentOrQuery)
 				}
 			}
 		}
@@ -94,18 +109,18 @@ func (c *Schema) applyPreMiddleware(operation string, documentOrQuery bson.M, mo
 }
 
 // apply the post middleware
-func (c *Schema) applyPostMiddleware(operation string, document bson.M, model *Model, err error) error {
+func (c *Schema) applyPostMiddleware(operation string, document bson.M, err error) error {
 	// loop using integer iterator to keep order
 	for i := 0; i < len(c.middleware.post); i++ {
 		if mw, ok := c.middleware.post[i]; ok {
 			if mw.Operation == operation {
 				if !mw.Async {
-					if err := mw.Handler(document, model, err); err != nil {
+					if err := mw.Handler(document, err); err != nil {
 						return err
 					}
 				} else {
 					// run async as goroutine
-					go mw.Handler(document, model, err)
+					go mw.Handler(document, err)
 				}
 			}
 		}

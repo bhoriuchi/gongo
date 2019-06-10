@@ -2,6 +2,8 @@ package helpers
 
 import (
 	"encoding/json"
+	"fmt"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -67,4 +69,10 @@ func ToInterface(src interface{}, dest interface{}) error {
 // IsObjectID tests if obj is an object id
 func IsObjectID(obj interface{}) bool {
 	return GetElement(obj).Type() == reflect.TypeOf(primitive.ObjectID([12]byte{}))
+}
+
+// DotPathToSlashPath converts a dot path to a dir path
+func DotPathToSlashPath(p string) string {
+	s := strings.ReplaceAll(p, ".", "/")
+	return filepath.Clean(fmt.Sprintf("/%s", s))
 }

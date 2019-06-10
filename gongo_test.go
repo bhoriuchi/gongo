@@ -1,0 +1,101 @@
+package gongo
+
+import (
+	"fmt"
+	"testing"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo/options"
+)
+
+func TestGongo(t *testing.T) {
+	// create a client
+	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	g := New("gongo-test", clientOptions)
+
+	barSchema := Schema{
+		Fields: SchemaFieldMap{
+			"name": {
+				Type:     StringType,
+				Required: true,
+				Validate: &[]ValidatorFunc{
+					func(value interface{}) error {
+						if value.(string) == "" {
+							return fmt.Errorf("name cannot be empty")
+						}
+						return nil
+					},
+				},
+			},
+		},
+	}
+
+	fooSchema := Schema{
+		Fields: SchemaFieldMap{
+			"name": {
+				Type:     StringType,
+				Required: true,
+			},
+			"bar": {
+				Type:     barSchema,
+				Required: true,
+			},
+			"description": {
+				Type:    StringType,
+				Default: "nobody likes these",
+			},
+		},
+	}
+
+	foo, err := g.Model("Foo", &fooSchema)
+	if err != nil {
+		t.Errorf("%s", err.Error())
+		return
+	}
+
+	if err := g.Connect(); err != nil {
+		t.Errorf("%s", err.Error())
+		return
+	}
+
+	doc, err := foo.New(bson.M{
+		"name":        "stuff",
+		"description": "barz",
+		"bar": bson.M{
+			"name": "stuff",
+			"qux":  "blah",
+		},
+		"baz": 1,
+	})
+	if err != nil {
+		t.Errorf("%s", err.Error())
+		return
+	}
+
+	if err := doc.Set("bar.name", "buzz"); err != nil {
+		t.Errorf("%s", err.Error())
+		return
+	}
+
+	if err := doc.Save(); err != nil {
+		t.Errorf("%s", err.Error())
+		return
+	}
+
+	fmt.Println("ID:", doc.ID())
+
+	// hydrate a new model
+	hydrated, err := foo.Hydrate(bson.M{"id": doc.ID()})
+	if err != nil {
+		t.Errorf("%s", err.Error())
+		return
+	}
+
+	res := bson.M{}
+	if err := hydrated.Decode(&res); err != nil {
+		t.Errorf("%s", err.Error())
+		return
+	}
+
+	fmt.Println(res)
+}

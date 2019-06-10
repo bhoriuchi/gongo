@@ -1,4 +1,4 @@
-package gongo
+package logger
 
 import "fmt"
 
@@ -17,62 +17,62 @@ type Logger interface {
 
 // Log a wrapper for logging
 type Log struct {
-	logger Logger
+	Logger Logger
 }
 
 // Debugf wraps Debugf
 func (c *Log) Debugf(format string, args ...interface{}) {
-	if c.logger != nil {
-		c.logger.Debugf(format, args...)
+	if c.Logger != nil {
+		c.Logger.Debugf(format, args...)
 	}
 }
 
 // Infof wraps Infof
 func (c *Log) Infof(format string, args ...interface{}) {
-	if c.logger != nil {
-		c.logger.Infof(format, args...)
+	if c.Logger != nil {
+		c.Logger.Infof(format, args...)
 	}
 }
 
 // Warnf wraps Warnf
 func (c *Log) Warnf(format string, args ...interface{}) {
-	if c.logger != nil {
-		c.logger.Warnf(format, args...)
+	if c.Logger != nil {
+		c.Logger.Warnf(format, args...)
 	}
 }
 
 // Errorf wraps Errorf
 func (c *Log) Errorf(format string, args ...interface{}) {
-	if c.logger != nil {
-		c.logger.Errorf(format, args...)
+	if c.Logger != nil {
+		c.Logger.Errorf(format, args...)
 	}
 }
 
 // Debug wraps Debug
 func (c *Log) Debug(args ...interface{}) {
-	if c.logger != nil {
-		c.logger.Debug(args...)
+	if c.Logger != nil {
+		c.Logger.Debug(args...)
 	}
 }
 
 // Info wraps Info
 func (c *Log) Info(args ...interface{}) {
-	if c.logger != nil {
-		c.logger.Info(args...)
+	if c.Logger != nil {
+		c.Logger.Info(args...)
 	}
 }
 
 // Warn wraps Warn
 func (c *Log) Warn(args ...interface{}) {
-	if c.logger != nil {
-		c.logger.Warn(args...)
+	if c.Logger != nil {
+		c.Logger.Warn(args...)
 	}
 }
 
 // Error wraps Error
 func (c *Log) Error(args ...interface{}) {
-	if c.logger != nil {
-		c.logger.Error(args...)
+	if c.Logger != nil {
+		c.Logger.Error(args...)
 	}
 }
 

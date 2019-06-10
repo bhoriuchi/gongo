@@ -2,57 +2,115 @@ package gongo
 
 import (
 	"fmt"
+	"reflect"
+	"strings"
 
+	"github.com/mitchellh/mapstructure"
+
+	"github.com/bhoriuchi/gongo/helpers"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-// ValidateFunc a validator function
-type ValidateFunc func(value interface{}, fieldName string, doc bson.M) error
-
-// WithValidator registers a validator
-func (c *Gongo) WithValidator(name string, handler ValidateFunc) *Gongo {
-	if name == "" {
-		c.log.Error("WithValidator: no validator name provided")
-		return c
-	} else if _, ok := c.validators[name]; ok {
-		c.log.Errorf("WithValidator: validator with name %q already registered", name)
-		return c
+// checks that required field exists
+func (c *Schema) checkRequired(field SchemaField, fieldPath []string, hasField bool) error {
+	if field.Required && !hasField {
+		return fmt.Errorf("required field %q not specified", strings.Join(fieldPath, "."))
 	}
-	c.validators[name] = handler
-	return c
+	return nil
 }
 
-// Validate validates a model
-func (c *Model) Validate() error {
-	// perform the required validation
-	if err := c.checkRequired(); err != nil {
-		return err
+// validates that the value type is the expected type
+func validateType(value, expectedType interface{}, fieldPath []string) error {
+	// mixed type allows anything
+	if expectedType == MixedType {
+		return nil
+	}
+	name := strings.Join(fieldPath, ".")
+	switch kind := helpers.GetKind(value); kind {
+	case reflect.String:
+		if expectedType != StringType {
+			return fmt.Errorf("field %q is not a valid %s string", name, expectedType)
+		}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if expectedType != IntType {
+			return fmt.Errorf("field %q is not a valid %s", name, expectedType)
+		}
+	case reflect.Float32, reflect.Float64:
+		if expectedType != FloatType {
+			return fmt.Errorf("field %q is not a valid %s", name, expectedType)
+		}
+	case reflect.Bool:
+		if expectedType != BoolType {
+			return fmt.Errorf("field %q is not a valid %s", name, expectedType)
+		}
+	case reflect.Map:
+		// determine if element type is a valid one
+		el := helpers.GetElement(expectedType)
+		if el.Type() == reflect.TypeOf(Schema{}) {
+			// if the element is a schema, try to initialize it
+			schema := el.Interface().(Schema)
+			schema.init()
+			b := bson.M{}
+			if err := mapstructure.WeakDecode(value, &b); err != nil {
+				return fmt.Errorf("field %q is not a valid %s", name, el.Type().Name())
+			}
+			return schema.validate(&b, fieldPath)
+		}
+	}
+	return nil
+}
+
+// validates that the defined schema type is the actual type
+func (c *Schema) validateType(field SchemaField, fieldPath []string, value interface{}) error {
+	// if the field is not an array, validate it
+	if !field.isArray {
+		return validateType(value, field.elementType, fieldPath)
 	}
 
-	// now perform custom validations
-	for _, v := range *c.fieldTagMap {
-		validations, foundValidate := v.getList(c.gongo.fieldTagDef.Get("validate"))
-		name, foundName := v.getString(c.gongo.fieldTagDef.Get("name"))
+	// otherwise, iterate though each element and validate it
+	s := helpers.GetElement(value)
+	for i := 0; i < s.Len(); i++ {
+		if err := validateType(
+			s.Index(i).Interface(),
+			field.elementType,
+			append(fieldPath, fmt.Sprintf("%d", i)),
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
-		if !foundValidate || !foundName {
+func (c *Schema) validate(doc *bson.M, path []string) error {
+	if doc == nil {
+		return fmt.Errorf("no document to validate")
+	}
+	document := *doc
+	for name, field := range c.Fields {
+		fieldPath := append(path, name)
+		fieldValue, hasField := document[name]
+
+		// check if the field is required
+		if err := c.checkRequired(*field, fieldPath, hasField); err != nil {
+			return err
+		}
+
+		// if there is no field, continue to the next
+		if !hasField {
 			continue
 		}
 
-		doc := *c.document
-		value, ok := doc[name]
-		if !ok {
-			value = nil
+		// otherwise validate the value type
+		if err := c.validateType(*field, fieldPath, fieldValue); err != nil {
+			return err
 		}
 
-		// perform each validation defined
-		for _, vName := range validations {
-			// find the validator
-			if validator, ok := c.gongo.validators[vName]; ok {
-				if err := validator(value, name, doc); err != nil {
+		// now perform custom validations if defined
+		if field.Validate != nil {
+			for _, validator := range *field.Validate {
+				if err := validator(fieldValue); err != nil {
 					return err
 				}
-			} else {
-				c.gongo.log.Warnf("failed to find validator %q", vName)
 			}
 		}
 	}
@@ -60,37 +118,7 @@ func (c *Model) Validate() error {
 	return nil
 }
 
-func (c *Model) checkRequired() error {
-	for _, v := range *c.fieldTagMap {
-		required, foundRequired := v.getString(c.gongo.fieldTagDef.Get("required"))
-		name, foundName := v.getString(c.gongo.fieldTagDef.Get("name"))
-
-		// verify that the field tags are set up correctly
-		if !foundRequired || !foundName || required == "false" || required == "0" {
-			continue
-		}
-
-		// get the value
-		doc := *c.document
-		value, ok := doc[name]
-		if !ok {
-			return fmt.Errorf("required field %q not found", name)
-		}
-
-		// if required is truthy continue
-		if required == "true" || required == "1" {
-			continue
-		}
-
-		// otherwise the required field should point to a validator
-		// function
-		if validator, ok := c.gongo.validators[required]; ok {
-			if err := validator(value, name, doc); err != nil {
-				return err
-			}
-		} else {
-			c.gongo.log.Warnf("failed to find validator %q", required)
-		}
-	}
-	return nil
+// Validate validates a document
+func (c *Document) Validate() error {
+	return c.model.schema.validate(c.next, []string{})
 }

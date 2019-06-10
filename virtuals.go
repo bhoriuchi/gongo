@@ -10,6 +10,22 @@ import (
 // VirtualFieldMap a map of virtual types
 type VirtualFieldMap map[string]*VirtualConfig
 
+func (c *VirtualFieldMap) copy() VirtualFieldMap {
+	m := make(map[string]*VirtualConfig)
+	for k, v := range *c {
+		if v != nil {
+			m[k] = &VirtualConfig{
+				Name: v.Name,
+				Get:  v.Get,
+				Set:  v.Set,
+			}
+		} else {
+			m[k] = v
+		}
+	}
+	return m
+}
+
 // VirtualGetFunc for resolving virtual
 type VirtualGetFunc func(doc bson.M) (interface{}, error)
 
@@ -23,18 +39,27 @@ type VirtualConfig struct {
 	Set  VirtualSetFunc
 }
 
+// returns true if the key name is a registered virtual
+func (c *Schema) keyIsVirtual(key string) bool {
+	if c.Virtuals != nil {
+		for _, config := range *c.Virtuals {
+			if config.Name == key {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Virtual adds a virtual field config
 func (c *Schema) Virtual(config *VirtualConfig) *Schema {
 	if config == nil || config.Name == "" {
 		return c
 	}
-	if c.virtuals == nil {
-		c.virtuals = &VirtualFieldMap{}
+	if c.Virtuals == nil {
+		c.Virtuals = &VirtualFieldMap{}
 	}
-	virtuals := *c.virtuals
-	if _, ok := virtuals[config.Name]; ok {
-		return c
-	}
+	virtuals := *c.Virtuals
 	virtuals[config.Name] = config
 	return c
 }
@@ -42,7 +67,7 @@ func (c *Schema) Virtual(config *VirtualConfig) *Schema {
 // apply virtual setters creates a new document by setting virtual fields
 // and keeping the non-virtual fields
 func (c *Schema) applyVirtualSetters(doc bson.M) (*bson.M, error) {
-	virtuals := *c.virtuals
+	virtuals := *c.Virtuals
 	newDoc := bson.M{}
 	for k, v := range doc {
 		if config, ok := virtuals[k]; ok {
@@ -58,7 +83,7 @@ func (c *Schema) applyVirtualSetters(doc bson.M) (*bson.M, error) {
 
 // apply virtuals getters
 func (c *Schema) applyVirtualGetters(doc bson.M) error {
-	for _, v := range *c.virtuals {
+	for _, v := range *c.Virtuals {
 		value, err := v.Get(doc)
 		if err != nil {
 			return err
@@ -108,7 +133,7 @@ func (c *Model) deepQueryBuild(obj interface{}) (interface{}, error) {
 	// handle maps
 	case reflect.Map:
 		result := bson.M{}
-		virtuals := *c.schema.virtuals
+		virtuals := *c.schema.Virtuals
 		original := reflect.ValueOf(obj)
 		for _, key := range original.MapKeys() {
 			k := key.Interface().(string)
@@ -132,6 +157,5 @@ func (c *Model) deepQueryBuild(obj interface{}) (interface{}, error) {
 		}
 		return result, nil
 	}
-
 	return obj, nil
 }
