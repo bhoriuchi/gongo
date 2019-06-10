@@ -33,6 +33,23 @@ func (c *Model) Collection() *mongo.Collection {
 	return c.Database().Collection(c.collectionName)
 }
 
+// Create create and saves a document
+func (c *Model) Create(document interface{}) (*Document, error) {
+	return c.CreateWithTimeout(document, nil)
+}
+
+// CreateWithTimeout creates and saves a document
+func (c *Model) CreateWithTimeout(document interface{}, timeout *int) (*Document, error) {
+	doc, err := c.New(document)
+	if err != nil {
+		return nil, err
+	}
+	if err := doc.SaveWithTimeout(timeout); err != nil {
+		return doc, err
+	}
+	return doc, nil
+}
+
 // New creates a new instance of a model
 func (c *Model) New(document interface{}) (*Document, error) {
 	if document == nil {

@@ -66,6 +66,7 @@ func (c *Schema) Virtual(config *VirtualConfig) *Schema {
 
 // apply virtual setters creates a new document by setting virtual fields
 // and keeping the non-virtual fields
+// TODO: support nested virtuals
 func (c *Schema) applyVirtualSetters(doc bson.M) (*bson.M, error) {
 	virtuals := *c.Virtuals
 	newDoc := bson.M{}

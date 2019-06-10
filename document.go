@@ -19,6 +19,23 @@ type Document struct {
 	next  *bson.M
 }
 
+// DocumentList a list of documents
+type DocumentList []*Document
+
+// Decode decodes all of the documents in a document list to a target
+func (c *DocumentList) Decode(target interface{}) error {
+	l := *c
+	list := make([]interface{}, len(l))
+	for i, doc := range l {
+		v := bson.M{}
+		if err := doc.Decode(&v); err != nil {
+			return err
+		}
+		list[i] = &v
+	}
+	return mapstructure.WeakDecode(list, target)
+}
+
 // ID returns the object id
 func (c *Document) ID() interface{} {
 	return c.id
@@ -56,7 +73,6 @@ func (c *Document) load(document interface{}, schema *Schema) error {
 	// first conver to a map
 	doc := bson.M{}
 	prev := bson.M{}
-	cur := bson.M{}
 	next := bson.M{}
 
 	// convert to bson
@@ -72,13 +88,11 @@ func (c *Document) load(document interface{}, schema *Schema) error {
 	}
 
 	// filter non-schema fields and _id
-	for k, v := range *setDoc {
-		if _, ok := schema.Fields[k]; ok || k == "_id" {
-			if k == "_id" {
-				c.id = v
-			} else {
-				cur[k] = v
-			}
+	cur := schema.filterUndefined(setDoc)
+	if cur != nil {
+		m := *cur
+		if id, ok := m["_id"]; ok {
+			c.id = id
 		}
 	}
 
@@ -91,7 +105,7 @@ func (c *Document) load(document interface{}, schema *Schema) error {
 	}
 
 	c.prev = &prev
-	c.cur = &cur
+	c.cur = cur
 	c.next = &next
 
 	return nil

@@ -122,3 +122,76 @@ func (c *Schema) validate(doc *bson.M, path []string) error {
 func (c *Document) Validate() error {
 	return c.model.schema.validate(c.next, []string{})
 }
+
+// filters non schema fields out
+func (c *Schema) filterUndefined(doc *bson.M) *bson.M {
+	result := bson.M{}
+
+	for fieldName, fieldValue := range *doc {
+		// immediately add id
+		if fieldName == "_id" {
+			result[fieldName] = fieldValue
+			continue
+		}
+
+		field, hasField := c.Fields[fieldName]
+		if !hasField {
+			continue
+		}
+
+		el := helpers.GetElement(field.elementType)
+		isNestedSchema := el.Type() == reflect.TypeOf(Schema{})
+
+		// handle object ids, mixed types, and non schema types
+		if helpers.IsObjectID(fieldValue) || field.elementType == MixedType || !isNestedSchema {
+			result[fieldName] = fieldValue
+			continue
+		}
+
+		// get the nested schema
+		schema := el.Interface().(Schema)
+		schema.init()
+
+		// get the data kind
+		switch kind := helpers.GetKind(fieldValue); kind {
+		case reflect.Array, reflect.Slice:
+			// if the data is an array and the field is not, ignore the data
+			if !field.isArray {
+				continue
+			}
+			a := make([]interface{}, 0)
+			// loop through
+			fieldEl := helpers.GetElement(fieldValue)
+			for i := 0; i < fieldEl.Len(); i++ {
+				m := bson.M{}
+				if err := mapstructure.WeakDecode(fieldValue, &m); err != nil {
+					continue
+				}
+
+				nested := schema.filterUndefined(&m)
+				if nested != nil {
+					a = append(a, nested)
+				}
+			}
+
+			result[fieldName] = a
+		case reflect.Map:
+			// if marked as an array ignore
+			if field.isArray {
+				continue
+			}
+
+			m := bson.M{}
+			if err := mapstructure.WeakDecode(fieldValue, &m); err != nil {
+				continue
+			}
+
+			nested := schema.filterUndefined(&m)
+			if nested != nil {
+				result[fieldName] = nested
+			}
+		}
+	}
+
+	return &result
+}

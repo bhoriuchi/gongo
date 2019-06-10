@@ -1,6 +1,7 @@
 package gongo
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -82,20 +83,38 @@ func TestGongo(t *testing.T) {
 		return
 	}
 
-	fmt.Println("ID:", doc.ID())
-
-	// hydrate a new model
-	hydrated, err := foo.Hydrate(bson.M{"id": doc.ID()})
+	docs, err := foo.Find(bson.M{})
 	if err != nil {
 		t.Errorf("%s", err.Error())
 		return
 	}
 
-	res := bson.M{}
-	if err := hydrated.Decode(&res); err != nil {
+	var res []bson.M
+	if err := docs.Decode(&res); err != nil {
 		t.Errorf("%s", err.Error())
 		return
 	}
 
-	fmt.Println(res)
+	j, _ := json.MarshalIndent(res, "", "  ")
+
+	fmt.Printf("%s\n", j)
+
+	/*
+		fmt.Println("ID:", doc.ID())
+
+		// hydrate a new model
+		hydrated, err := foo.Hydrate(bson.M{"id": doc.ID()})
+		if err != nil {
+			t.Errorf("%s", err.Error())
+			return
+		}
+
+		res := bson.M{}
+		if err := hydrated.Decode(&res); err != nil {
+			t.Errorf("%s", err.Error())
+			return
+		}
+
+		fmt.Println(res)
+	*/
 }

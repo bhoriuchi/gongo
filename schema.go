@@ -183,6 +183,7 @@ func (c *SchemaOptions) copy() SchemaOptions {
 	return options
 }
 
+// TODO: make this work or remove it
 func (c *Schema) prepareData(doc interface{}, isQuery bool) *bson.M {
 	result := bson.M{}
 	document := bson.M{}
