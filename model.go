@@ -32,18 +32,13 @@ func (c *Model) Collection() *mongo.Collection {
 	return c.Database().Collection(c.collectionName)
 }
 
-// Create create and saves a document
-func (c *Model) Create(document interface{}) (*Document, error) {
-	return c.CreateWithTimeout(document, nil)
-}
-
-// CreateWithTimeout creates and saves a document
-func (c *Model) CreateWithTimeout(document interface{}, timeout *int) (*Document, error) {
+// Create creates and saves a document
+func (c *Model) Create(document interface{}, timeout ...*int) (*Document, error) {
 	doc, err := c.New(document)
 	if err != nil {
 		return nil, err
 	}
-	if err := doc.SaveWithTimeout(timeout); err != nil {
+	if err := doc.Save(timeout...); err != nil {
 		return doc, err
 	}
 	return doc, nil
@@ -64,20 +59,15 @@ func (c *Model) New(document interface{}) (*Document, error) {
 }
 
 // Hydrate hydrates a model
-func (c *Model) Hydrate(filter interface{}) (*Document, error) {
-	return c.HydrateWithTimeout(filter, nil)
-}
-
-// HydrateWithTimeout hydrates a model
-func (c *Model) HydrateWithTimeout(filter interface{}, timeout *int) (*Document, error) {
+func (c *Model) Hydrate(filter interface{}, timeout ...*int) (*Document, error) {
 	q := bson.M{}
 	if filter != nil {
-		if err := weakDecode(filter, &q); err != nil {
+		if err := c.gongo.weakDecode(filter, &q); err != nil {
 			return nil, err
 		}
 	}
 
-	ctx, cancelFunc := newContext(timeout)
+	ctx, cancelFunc := newContext(timeout...)
 	defer cancelFunc()
 
 	// apply virtuals to the filter

@@ -14,7 +14,7 @@ func (c *Model) InsertOne(doc interface{}, opts ...*options.InsertOneOptions) (*
 
 // InsertOneWithTimeout inserts one document
 func (c *Model) InsertOneWithTimeout(doc interface{}, timeout *int, opts ...*options.InsertOneOptions) (*Document, error) {
-	return c.CreateWithTimeout(doc, timeout)
+	return c.Create(doc, timeout)
 }
 
 // FindOneAndUpdate finds a document and updates it
@@ -38,7 +38,7 @@ func (c *Model) FindOneAndUpdateWithTimeout(
 	}
 	m := bson.M{}
 	if filter != nil {
-		if err := weakDecode(filter, &m); err != nil {
+		if err := c.gongo.weakDecode(filter, &m); err != nil {
 			return nil, err
 		}
 	}
@@ -51,7 +51,7 @@ func (c *Model) FindOneAndUpdateWithTimeout(
 
 	// create a working document
 	doc := bson.M{}
-	if err := weakDecode(update, &doc); err != nil {
+	if err := c.gongo.weakDecode(update, &doc); err != nil {
 		return nil, err
 	}
 
@@ -66,10 +66,10 @@ func (c *Model) FindOneAndUpdateWithTimeout(
 	}
 
 	// filter undefined fields
-	document = c.schema.filterUndefined(document)
+	document = c.schema.filterUndefined(document, c)
 
 	// validate the document
-	if err := c.schema.validate(document, []string{}, true); err != nil {
+	if err := c.schema.validate(document, []string{}, true, c); err != nil {
 		return nil, err
 	}
 
@@ -118,7 +118,7 @@ func (c *Model) FindOneAndDeleteWithTimeout(
 ) (*Document, error) {
 	m := bson.M{}
 	if filter != nil {
-		if err := weakDecode(filter, &m); err != nil {
+		if err := c.gongo.weakDecode(filter, &m); err != nil {
 			return nil, err
 		}
 	}

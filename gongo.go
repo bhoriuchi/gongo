@@ -10,47 +10,58 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/x/mongo/driver/connstring"
 )
 
-// FieldTagName the name of the tag to use for decoding fields
-var FieldTagName = "json"
-
-// create a global decoder
-var weakDecode = func(input, output interface{}) error {
-	config := &mapstructure.DecoderConfig{
-		Metadata:         nil,
-		Result:           output,
-		WeaklyTypedInput: true,
-		TagName:          FieldTagName,
-	}
-
-	decoder, err := mapstructure.NewDecoder(config)
-	if err != nil {
-		return err
-	}
-
-	return decoder.Decode(input)
+// Options gongo options
+type Options struct {
+	FieldTag        string
+	DefaultDatabase string
 }
 
 // Gongo main interface
 type Gongo struct {
-	connected bool
-	database  string
-	options   *options.ClientOptions
-	models    map[string]*Model
-	client    *mongo.Client
-	hub       chan string
+	connected     bool
+	clientOptions *options.ClientOptions
+	options       *Options
+	database      string
+	models        map[string]*Model
+	client        *mongo.Client
+	hub           chan string
+	fieldTag      string
+}
+
+// M gets a model from the registered models
+func (c *Gongo) M(name string) *Model {
+	if model, ok := c.models[name]; ok {
+		return model
+	}
+	return nil
 }
 
 // New creates a new gongo instance
-func New(database string, options *options.ClientOptions) *Gongo {
+func New(opts ...*Options) *Gongo {
 	g := &Gongo{
 		connected: false,
-		database:  database,
-		options:   options,
 		models:    make(map[string]*Model),
-		client:    nil,
 		hub:       make(chan string),
+		options: &Options{
+			FieldTag:        "json",
+			DefaultDatabase: "test",
+		},
+	}
+
+	// get options
+	if len(opts) > 0 {
+		o := opts[0]
+		if o != nil {
+			if o.FieldTag != "" {
+				g.options.FieldTag = o.FieldTag
+			}
+			if o.DefaultDatabase != "" {
+				g.options.DefaultDatabase = o.DefaultDatabase
+			}
+		}
 	}
 
 	return g
@@ -58,15 +69,27 @@ func New(database string, options *options.ClientOptions) *Gongo {
 
 // Connect connects to mongodb, this should be performed
 // after all schema and model setup has taken place
-func (c *Gongo) Connect() error {
-	if c.database == "" {
-		return fmt.Errorf("no database specified")
-	} else if c.connected {
+func (c *Gongo) Connect(connectionString string) error {
+	if c.connected {
 		return fmt.Errorf("already connected")
 	}
 
+	// build client options from connectionString and validate
+	c.clientOptions = options.Client().ApplyURI(connectionString)
+	if err := c.clientOptions.Validate(); err != nil {
+		return err
+	}
+
+	// get database name from connection string or use the default
+	cs, _ := connstring.Parse(connectionString)
+	if cs.Database != "" {
+		c.database = cs.Database
+	} else {
+		c.database = c.options.DefaultDatabase
+	}
+
 	// connect the client
-	client, err := mongo.Connect(context.Background(), c.options)
+	client, err := mongo.Connect(context.Background(), c.clientOptions)
 	if err != nil {
 		return err
 	}
@@ -162,13 +185,31 @@ func (c *Gongo) Model(name string, schema *Schema, opts ...*ModelOptions) (*Mode
 	return model, nil
 }
 
+// performs a weakDecode
+func (c *Gongo) weakDecode(input, output interface{}) error {
+	config := &mapstructure.DecoderConfig{
+		Metadata:         nil,
+		Result:           output,
+		WeaklyTypedInput: true,
+		TagName:          c.options.FieldTag,
+	}
+	decoder, err := mapstructure.NewDecoder(config)
+	if err != nil {
+		return err
+	}
+	return decoder.Decode(input)
+}
+
 // creates a new context
-func newContext(timeout *int) (context.Context, context.CancelFunc) {
-	if timeout != nil && *timeout > 0 {
-		return context.WithTimeout(
-			context.Background(),
-			time.Duration(*timeout)*time.Second,
-		)
+func newContext(timeout ...*int) (context.Context, context.CancelFunc) {
+	if len(timeout) > 0 {
+		to := timeout[0]
+		if to != nil && *to > 0 {
+			return context.WithTimeout(
+				context.Background(),
+				time.Duration(*to)*time.Second,
+			)
+		}
 	}
 	return context.Background(), func() {}
 }

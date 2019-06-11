@@ -18,7 +18,7 @@ func (c *Schema) checkRequired(field SchemaField, fieldPath []string, hasField b
 }
 
 // validates that the value type is the expected type
-func validateType(value, expectedType interface{}, fieldPath []string, skipRequired bool) error {
+func validateType(value, expectedType interface{}, fieldPath []string, skipRequired bool, model *Model) error {
 	// mixed type allows anything
 	if expectedType == MixedType {
 		return nil
@@ -49,20 +49,26 @@ func validateType(value, expectedType interface{}, fieldPath []string, skipRequi
 			schema := el.Interface().(Schema)
 			schema.init()
 			b := bson.M{}
-			if err := weakDecode(value, &b); err != nil {
+			if err := model.gongo.weakDecode(value, &b); err != nil {
 				return fmt.Errorf("field %q is not a valid %s", name, el.Type().Name())
 			}
-			return schema.validate(&b, fieldPath, skipRequired)
+			return schema.validate(&b, fieldPath, skipRequired, model)
 		}
 	}
 	return nil
 }
 
 // validates that the defined schema type is the actual type
-func (c *Schema) validateType(field SchemaField, fieldPath []string, value interface{}, skipRequired bool) error {
+func (c *Schema) validateType(
+	field SchemaField,
+	fieldPath []string,
+	value interface{},
+	skipRequired bool,
+	model *Model,
+) error {
 	// if the field is not an array, validate it
 	if !field.isArray {
-		return validateType(value, field.elementType, fieldPath, skipRequired)
+		return validateType(value, field.elementType, fieldPath, skipRequired, model)
 	}
 
 	// otherwise, iterate though each element and validate it
@@ -73,6 +79,7 @@ func (c *Schema) validateType(field SchemaField, fieldPath []string, value inter
 			field.elementType,
 			append(fieldPath, fmt.Sprintf("%d", i)),
 			skipRequired,
+			model,
 		); err != nil {
 			return err
 		}
@@ -80,7 +87,7 @@ func (c *Schema) validateType(field SchemaField, fieldPath []string, value inter
 	return nil
 }
 
-func (c *Schema) validate(doc *bson.M, path []string, skipRequired bool) error {
+func (c *Schema) validate(doc *bson.M, path []string, skipRequired bool, model *Model) error {
 	if doc == nil {
 		return fmt.Errorf("no document to validate")
 	}
@@ -102,7 +109,7 @@ func (c *Schema) validate(doc *bson.M, path []string, skipRequired bool) error {
 		}
 
 		// otherwise validate the value type
-		if err := c.validateType(*field, fieldPath, fieldValue, skipRequired); err != nil {
+		if err := c.validateType(*field, fieldPath, fieldValue, skipRequired, model); err != nil {
 			return err
 		}
 
@@ -121,11 +128,11 @@ func (c *Schema) validate(doc *bson.M, path []string, skipRequired bool) error {
 
 // Validate validates a document
 func (c *Document) Validate() error {
-	return c.model.schema.validate(c.next, []string{}, false)
+	return c.model.schema.validate(c.next, []string{}, false, c.model)
 }
 
 // filters non schema fields out
-func (c *Schema) filterUndefined(doc *bson.M) *bson.M {
+func (c *Schema) filterUndefined(doc *bson.M, model *Model) *bson.M {
 	result := bson.M{}
 
 	for fieldName, fieldValue := range *doc {
@@ -165,11 +172,11 @@ func (c *Schema) filterUndefined(doc *bson.M) *bson.M {
 			fieldEl := helpers.GetElement(fieldValue)
 			for i := 0; i < fieldEl.Len(); i++ {
 				m := bson.M{}
-				if err := weakDecode(fieldValue, &m); err != nil {
+				if err := model.gongo.weakDecode(fieldValue, &m); err != nil {
 					continue
 				}
 
-				nested := schema.filterUndefined(&m)
+				nested := schema.filterUndefined(&m, model)
 				if nested != nil {
 					a = append(a, nested)
 				}
@@ -183,11 +190,11 @@ func (c *Schema) filterUndefined(doc *bson.M) *bson.M {
 			}
 
 			m := bson.M{}
-			if err := weakDecode(fieldValue, &m); err != nil {
+			if err := model.gongo.weakDecode(fieldValue, &m); err != nil {
 				continue
 			}
 
-			nested := schema.filterUndefined(&m)
+			nested := schema.filterUndefined(&m, model)
 			if nested != nil {
 				result[fieldName] = nested
 			}

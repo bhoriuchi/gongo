@@ -6,13 +6,13 @@ import (
 	"testing"
 
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+var dbURI = "mongodb://localhost:27017"
+
 func TestGongo(t *testing.T) {
-	// create a client
-	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
-	g := New("gongo-test", clientOptions)
+
+	g := New(&Options{DefaultDatabase: "gongo-test"})
 
 	barSchema := Schema{
 		Fields: SchemaFieldMap{
@@ -54,7 +54,7 @@ func TestGongo(t *testing.T) {
 		return
 	}
 
-	if err := g.Connect(); err != nil {
+	if err := g.Connect(dbURI); err != nil {
 		t.Errorf("%s", err.Error())
 		return
 	}

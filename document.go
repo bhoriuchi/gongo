@@ -24,16 +24,23 @@ type DocumentList []*Document
 // Decode decodes all of the documents in a document list to a target
 func (c *DocumentList) Decode(target interface{}) error {
 	l := *c
+	var g *Gongo
 
 	list := make([]interface{}, len(l))
 	for i, doc := range l {
+		if i == 0 {
+			g = doc.model.gongo
+		}
 		v := bson.M{}
 		if err := doc.Decode(&v); err != nil {
 			return err
 		}
 		list[i] = &v
 	}
-	return weakDecode(list, target)
+	if g == nil {
+		return helpers.ToInterface(list, target)
+	}
+	return g.weakDecode(list, target)
 }
 
 // ID returns the object id
@@ -77,7 +84,7 @@ func (c *Document) load(document interface{}, schema *Schema) error {
 
 	// convert to bson
 	if document != nil {
-		if err := weakDecode(document, &doc); err != nil {
+		if err := c.model.gongo.weakDecode(document, &doc); err != nil {
 			return err
 		}
 	}
@@ -88,7 +95,7 @@ func (c *Document) load(document interface{}, schema *Schema) error {
 	}
 
 	// filter non-schema fields and _id
-	cur := schema.filterUndefined(setDoc)
+	cur := schema.filterUndefined(setDoc, c.model)
 	if cur != nil {
 		m := *cur
 		if id, ok := m["_id"]; ok {
@@ -97,10 +104,10 @@ func (c *Document) load(document interface{}, schema *Schema) error {
 	}
 
 	// copy to prev and next
-	if err := weakDecode(cur, &prev); err != nil {
+	if err := c.model.gongo.weakDecode(cur, &prev); err != nil {
 		return err
 	}
-	if err := weakDecode(cur, &next); err != nil {
+	if err := c.model.gongo.weakDecode(cur, &next); err != nil {
 		return err
 	}
 
@@ -113,10 +120,10 @@ func (c *Document) load(document interface{}, schema *Schema) error {
 
 // moves current to prev, next to cur, and leaves next alone
 func (c *Document) moveNext() error {
-	if err := weakDecode(c.cur, c.prev); err != nil {
+	if err := c.model.gongo.weakDecode(c.cur, c.prev); err != nil {
 		return err
 	}
-	if err := weakDecode(c.next, c.cur); err != nil {
+	if err := c.model.gongo.weakDecode(c.next, c.cur); err != nil {
 		return err
 	}
 	return nil
@@ -126,7 +133,7 @@ func (c *Document) moveNext() error {
 // this does not save the revert
 func (c *Document) revertCurrent() error {
 	next := bson.M{}
-	if err := weakDecode(c.cur, &next); err != nil {
+	if err := c.model.gongo.weakDecode(c.cur, &next); err != nil {
 		return err
 	}
 	c.next = &next
@@ -138,7 +145,7 @@ func (c *Document) revertCurrent() error {
 func (c *Document) revertPrevious() error {
 	original := c.cur
 	cur := bson.M{}
-	if err := weakDecode(c.prev, &cur); err != nil {
+	if err := c.model.gongo.weakDecode(c.prev, &cur); err != nil {
 		return err
 	}
 	if err := c.revertCurrent(); err != nil {
@@ -146,35 +153,6 @@ func (c *Document) revertPrevious() error {
 		return err
 	}
 	c.cur = &cur
-	return nil
-}
-
-// Rollback rolls back changes to previous
-func (c *Document) Rollback() error {
-	return c.RollbackWithTimeout(nil)
-}
-
-// RollbackWithTimeout reverts the model to the previous and saves
-// if this operation fails, the state before the rollback is returned
-func (c *Document) RollbackWithTimeout(timeout *int) error {
-	prev := c.prev
-	cur := c.cur
-	next := c.next
-
-	if err := c.revertPrevious(); err != nil {
-		c.prev = prev
-		c.cur = cur
-		c.next = next
-		return err
-	}
-
-	if err := c.SaveWithTimeout(timeout); err != nil {
-		c.prev = prev
-		c.cur = cur
-		c.next = next
-		return err
-	}
-
 	return nil
 }
 
@@ -186,7 +164,7 @@ func (c *Document) Decode(target interface{}) error {
 
 	// make a working copy
 	doc := bson.M{}
-	if err := weakDecode(c.cur, &doc); err != nil {
+	if err := c.model.gongo.weakDecode(c.cur, &doc); err != nil {
 		return err
 	}
 
@@ -201,16 +179,11 @@ func (c *Document) Decode(target interface{}) error {
 	}
 
 	// decode the structure
-	return weakDecode(doc, target)
+	return c.model.gongo.weakDecode(doc, target)
 }
 
 // Save saves a document
-func (c *Document) Save() error {
-	return c.SaveWithTimeout(nil)
-}
-
-// SaveWithTimeout saves a document
-func (c *Document) SaveWithTimeout(timeout *int) error {
+func (c *Document) Save(timeout ...*int) error {
 	// re-usable error handler
 	errorFunc := func(doc bson.M, err error) error {
 		// apply post middleware
@@ -222,7 +195,7 @@ func (c *Document) SaveWithTimeout(timeout *int) error {
 
 	// first create a working document
 	doc := bson.M{}
-	if err := weakDecode(c.next, &doc); err != nil {
+	if err := c.model.gongo.weakDecode(c.next, &doc); err != nil {
 		return err
 	}
 
@@ -232,18 +205,18 @@ func (c *Document) SaveWithTimeout(timeout *int) error {
 	}
 
 	// filter undefined fields
-	document := c.model.schema.filterUndefined(&doc)
+	document := c.model.schema.filterUndefined(&doc, c.model)
 
 	// apply defaults
 	c.model.schema.setDefaults(*document)
 
 	// validate the document
-	if err := c.model.schema.validate(document, []string{}, false); err != nil {
+	if err := c.model.schema.validate(document, []string{}, false, c.model); err != nil {
 		return err
 	}
 
 	// create a context
-	ctx, cancelFunc := newContext(timeout)
+	ctx, cancelFunc := newContext(timeout...)
 	defer cancelFunc()
 
 	// save

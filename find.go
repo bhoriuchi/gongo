@@ -17,7 +17,7 @@ func (c *Model) FindWithTimeout(filter interface{}, timeout *int, opts ...*optio
 	results := make(DocumentList, 0)
 	m := bson.M{}
 	if filter != nil {
-		if err := weakDecode(filter, &m); err != nil {
+		if err := c.gongo.weakDecode(filter, &m); err != nil {
 			return nil, err
 		}
 	}
@@ -68,7 +68,7 @@ func (c *Model) FindOne(filter interface{}, opts ...*options.FindOneOptions) (*D
 func (c *Model) FindOneWithTimeout(filter interface{}, timeout *int, opts ...*options.FindOneOptions) (*Document, error) {
 	m := bson.M{}
 	if filter != nil {
-		if err := weakDecode(filter, &m); err != nil {
+		if err := c.gongo.weakDecode(filter, &m); err != nil {
 			return nil, err
 		}
 	}
