@@ -5,8 +5,6 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/mitchellh/mapstructure"
-
 	"github.com/bhoriuchi/gongo/helpers"
 	"go.mongodb.org/mongo-driver/bson"
 )
@@ -20,7 +18,7 @@ func (c *Schema) checkRequired(field SchemaField, fieldPath []string, hasField b
 }
 
 // validates that the value type is the expected type
-func validateType(value, expectedType interface{}, fieldPath []string) error {
+func validateType(value, expectedType interface{}, fieldPath []string, skipRequired bool) error {
 	// mixed type allows anything
 	if expectedType == MixedType {
 		return nil
@@ -51,20 +49,20 @@ func validateType(value, expectedType interface{}, fieldPath []string) error {
 			schema := el.Interface().(Schema)
 			schema.init()
 			b := bson.M{}
-			if err := mapstructure.WeakDecode(value, &b); err != nil {
+			if err := weakDecode(value, &b); err != nil {
 				return fmt.Errorf("field %q is not a valid %s", name, el.Type().Name())
 			}
-			return schema.validate(&b, fieldPath)
+			return schema.validate(&b, fieldPath, skipRequired)
 		}
 	}
 	return nil
 }
 
 // validates that the defined schema type is the actual type
-func (c *Schema) validateType(field SchemaField, fieldPath []string, value interface{}) error {
+func (c *Schema) validateType(field SchemaField, fieldPath []string, value interface{}, skipRequired bool) error {
 	// if the field is not an array, validate it
 	if !field.isArray {
-		return validateType(value, field.elementType, fieldPath)
+		return validateType(value, field.elementType, fieldPath, skipRequired)
 	}
 
 	// otherwise, iterate though each element and validate it
@@ -74,6 +72,7 @@ func (c *Schema) validateType(field SchemaField, fieldPath []string, value inter
 			s.Index(i).Interface(),
 			field.elementType,
 			append(fieldPath, fmt.Sprintf("%d", i)),
+			skipRequired,
 		); err != nil {
 			return err
 		}
@@ -81,7 +80,7 @@ func (c *Schema) validateType(field SchemaField, fieldPath []string, value inter
 	return nil
 }
 
-func (c *Schema) validate(doc *bson.M, path []string) error {
+func (c *Schema) validate(doc *bson.M, path []string, skipRequired bool) error {
 	if doc == nil {
 		return fmt.Errorf("no document to validate")
 	}
@@ -91,8 +90,10 @@ func (c *Schema) validate(doc *bson.M, path []string) error {
 		fieldValue, hasField := document[name]
 
 		// check if the field is required
-		if err := c.checkRequired(*field, fieldPath, hasField); err != nil {
-			return err
+		if !skipRequired {
+			if err := c.checkRequired(*field, fieldPath, hasField); err != nil {
+				return err
+			}
 		}
 
 		// if there is no field, continue to the next
@@ -101,7 +102,7 @@ func (c *Schema) validate(doc *bson.M, path []string) error {
 		}
 
 		// otherwise validate the value type
-		if err := c.validateType(*field, fieldPath, fieldValue); err != nil {
+		if err := c.validateType(*field, fieldPath, fieldValue, skipRequired); err != nil {
 			return err
 		}
 
@@ -120,7 +121,7 @@ func (c *Schema) validate(doc *bson.M, path []string) error {
 
 // Validate validates a document
 func (c *Document) Validate() error {
-	return c.model.schema.validate(c.next, []string{})
+	return c.model.schema.validate(c.next, []string{}, false)
 }
 
 // filters non schema fields out
@@ -164,7 +165,7 @@ func (c *Schema) filterUndefined(doc *bson.M) *bson.M {
 			fieldEl := helpers.GetElement(fieldValue)
 			for i := 0; i < fieldEl.Len(); i++ {
 				m := bson.M{}
-				if err := mapstructure.WeakDecode(fieldValue, &m); err != nil {
+				if err := weakDecode(fieldValue, &m); err != nil {
 					continue
 				}
 
@@ -182,7 +183,7 @@ func (c *Schema) filterUndefined(doc *bson.M) *bson.M {
 			}
 
 			m := bson.M{}
-			if err := mapstructure.WeakDecode(fieldValue, &m); err != nil {
+			if err := weakDecode(fieldValue, &m); err != nil {
 				continue
 			}
 

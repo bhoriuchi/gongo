@@ -5,8 +5,6 @@ import (
 	"reflect"
 	"regexp"
 
-	"github.com/mitchellh/mapstructure"
-
 	"github.com/bhoriuchi/gongo/helpers"
 	"go.mongodb.org/mongo-driver/bson"
 )
@@ -191,7 +189,7 @@ func (c *Schema) prepareData(doc interface{}, isQuery bool) *bson.M {
 	// ensure that the doc is a document
 	switch kind := helpers.GetKind(doc); kind {
 	case reflect.Map:
-		if err := mapstructure.WeakDecode(doc, &document); err != nil {
+		if err := weakDecode(doc, &document); err != nil {
 			return &document
 		}
 	default:

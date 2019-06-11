@@ -7,9 +7,30 @@ import (
 
 	"github.com/bhoriuchi/gongo/helpers"
 	"github.com/gertd/go-pluralize"
+	"github.com/mitchellh/mapstructure"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// FieldTagName the name of the tag to use for decoding fields
+var FieldTagName = "json"
+
+// create a global decoder
+var weakDecode = func(input, output interface{}) error {
+	config := &mapstructure.DecoderConfig{
+		Metadata:         nil,
+		Result:           output,
+		WeaklyTypedInput: true,
+		TagName:          FieldTagName,
+	}
+
+	decoder, err := mapstructure.NewDecoder(config)
+	if err != nil {
+		return err
+	}
+
+	return decoder.Decode(input)
+}
 
 // Gongo main interface
 type Gongo struct {

@@ -3,7 +3,6 @@ package gongo
 import (
 	"context"
 
-	"github.com/mitchellh/mapstructure"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -73,7 +72,7 @@ func (c *Model) Hydrate(filter interface{}) (*Document, error) {
 func (c *Model) HydrateWithTimeout(filter interface{}, timeout *int) (*Document, error) {
 	q := bson.M{}
 	if filter != nil {
-		if err := mapstructure.WeakDecode(filter, &q); err != nil {
+		if err := weakDecode(filter, &q); err != nil {
 			return nil, err
 		}
 	}

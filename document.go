@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/bhoriuchi/gongo/helpers"
-	"github.com/mitchellh/mapstructure"
 	"github.com/mitchellh/pointerstructure"
 	"go.mongodb.org/mongo-driver/bson"
 )
@@ -25,6 +24,7 @@ type DocumentList []*Document
 // Decode decodes all of the documents in a document list to a target
 func (c *DocumentList) Decode(target interface{}) error {
 	l := *c
+
 	list := make([]interface{}, len(l))
 	for i, doc := range l {
 		v := bson.M{}
@@ -33,7 +33,7 @@ func (c *DocumentList) Decode(target interface{}) error {
 		}
 		list[i] = &v
 	}
-	return mapstructure.WeakDecode(list, target)
+	return weakDecode(list, target)
 }
 
 // ID returns the object id
@@ -77,7 +77,7 @@ func (c *Document) load(document interface{}, schema *Schema) error {
 
 	// convert to bson
 	if document != nil {
-		if err := mapstructure.WeakDecode(document, &doc); err != nil {
+		if err := weakDecode(document, &doc); err != nil {
 			return err
 		}
 	}
@@ -97,10 +97,10 @@ func (c *Document) load(document interface{}, schema *Schema) error {
 	}
 
 	// copy to prev and next
-	if err := mapstructure.WeakDecode(cur, &prev); err != nil {
+	if err := weakDecode(cur, &prev); err != nil {
 		return err
 	}
-	if err := mapstructure.WeakDecode(cur, &next); err != nil {
+	if err := weakDecode(cur, &next); err != nil {
 		return err
 	}
 
@@ -113,10 +113,10 @@ func (c *Document) load(document interface{}, schema *Schema) error {
 
 // moves current to prev, next to cur, and leaves next alone
 func (c *Document) moveNext() error {
-	if err := mapstructure.WeakDecode(c.cur, c.prev); err != nil {
+	if err := weakDecode(c.cur, c.prev); err != nil {
 		return err
 	}
-	if err := mapstructure.WeakDecode(c.next, c.cur); err != nil {
+	if err := weakDecode(c.next, c.cur); err != nil {
 		return err
 	}
 	return nil
@@ -126,7 +126,7 @@ func (c *Document) moveNext() error {
 // this does not save the revert
 func (c *Document) revertCurrent() error {
 	next := bson.M{}
-	if err := mapstructure.WeakDecode(c.cur, &next); err != nil {
+	if err := weakDecode(c.cur, &next); err != nil {
 		return err
 	}
 	c.next = &next
@@ -138,7 +138,7 @@ func (c *Document) revertCurrent() error {
 func (c *Document) revertPrevious() error {
 	original := c.cur
 	cur := bson.M{}
-	if err := mapstructure.WeakDecode(c.prev, &cur); err != nil {
+	if err := weakDecode(c.prev, &cur); err != nil {
 		return err
 	}
 	if err := c.revertCurrent(); err != nil {
@@ -186,7 +186,7 @@ func (c *Document) Decode(target interface{}) error {
 
 	// make a working copy
 	doc := bson.M{}
-	if err := mapstructure.WeakDecode(c.cur, &doc); err != nil {
+	if err := weakDecode(c.cur, &doc); err != nil {
 		return err
 	}
 
@@ -201,7 +201,7 @@ func (c *Document) Decode(target interface{}) error {
 	}
 
 	// decode the structure
-	return mapstructure.WeakDecode(doc, target)
+	return weakDecode(doc, target)
 }
 
 // Save saves a document
@@ -222,7 +222,7 @@ func (c *Document) SaveWithTimeout(timeout *int) error {
 
 	// first create a working document
 	doc := bson.M{}
-	if err := mapstructure.WeakDecode(c.next, &doc); err != nil {
+	if err := weakDecode(c.next, &doc); err != nil {
 		return err
 	}
 
@@ -232,13 +232,13 @@ func (c *Document) SaveWithTimeout(timeout *int) error {
 	}
 
 	// filter undefined fields
-	doc = c.model.schema.copyInternalDocument(doc)
+	document := c.model.schema.filterUndefined(&doc)
 
 	// apply defaults
-	c.model.schema.setDefaults(doc)
+	c.model.schema.setDefaults(*document)
 
 	// validate the document
-	if err := c.model.schema.validate(&doc, []string{}); err != nil {
+	if err := c.model.schema.validate(document, []string{}, false); err != nil {
 		return err
 	}
 
@@ -251,7 +251,7 @@ func (c *Document) SaveWithTimeout(timeout *int) error {
 		result, err := c.model.Collection().UpdateOne(
 			ctx,
 			bson.M{"_id": c.id},
-			bson.M{"$set": doc},
+			bson.M{"$set": document},
 		)
 		if err != nil {
 			return errorFunc(nil, err)
@@ -278,7 +278,7 @@ func (c *Document) SaveWithTimeout(timeout *int) error {
 	}
 
 	// update the internal model with a filtered copy
-	nextDoc := c.model.schema.copyInternalDocument(doc)
+	nextDoc := c.model.schema.copyInternalDocument(*document)
 	c.next = &nextDoc
 	return c.moveNext()
 }
