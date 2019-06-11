@@ -57,6 +57,15 @@ func IsString(value interface{}) bool {
 	return GetKind(value) == reflect.String
 }
 
+// IsArrayLike checks if array like
+func IsArrayLike(value interface{}) bool {
+	switch kind := GetKind(value); kind {
+	case reflect.Array, reflect.Slice:
+		return true
+	}
+	return false
+}
+
 // ToInterface converts one interface to another using json
 func ToInterface(src interface{}, dest interface{}) error {
 	b, err := json.Marshal(src)

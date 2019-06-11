@@ -90,6 +90,10 @@ func (c *Schema) Post(operation string, handler PostMiddlewareFunc, async ...*bo
 
 // apply the pre middleware
 func (c *Schema) applyPreMiddleware(operation string, documentOrQuery bson.M) error {
+	if c.middleware == nil {
+		return nil
+	}
+
 	// loop using integer iterator to keep order
 	for i := 0; i < len(c.middleware.pre); i++ {
 		if mw, ok := c.middleware.pre[i]; ok {
@@ -110,6 +114,10 @@ func (c *Schema) applyPreMiddleware(operation string, documentOrQuery bson.M) er
 
 // apply the post middleware
 func (c *Schema) applyPostMiddleware(operation string, document bson.M, err error) error {
+	if c.middleware == nil {
+		return nil
+	}
+
 	// loop using integer iterator to keep order
 	for i := 0; i < len(c.middleware.post); i++ {
 		if mw, ok := c.middleware.post[i]; ok {

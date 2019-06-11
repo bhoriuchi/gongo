@@ -119,6 +119,9 @@ func (c *Gongo) Model(name string, schema *Schema, opts ...*ModelOptions) (*Mode
 		return nil, fmt.Errorf("no model name specified")
 	}
 
+	// add reference to root gongo
+	schema.gongo = c
+
 	// initialize the schema
 	if err := schema.init(); err != nil {
 		return nil, err

@@ -8,11 +8,9 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-var dbURI = "mongodb://localhost:27017"
-
 func TestGongo(t *testing.T) {
-
-	g := New(&Options{DefaultDatabase: "gongo-test"})
+	var dbURI = "mongodb://localhost:27017"
+	g := New(&Options{DefaultDatabase: "gongo-test", FieldTag: "json"})
 
 	barSchema := Schema{
 		Fields: SchemaFieldMap{
@@ -99,22 +97,4 @@ func TestGongo(t *testing.T) {
 
 	fmt.Printf("%s\n", j)
 
-	/*
-		fmt.Println("ID:", doc.ID())
-
-		// hydrate a new model
-		hydrated, err := foo.Hydrate(bson.M{"id": doc.ID()})
-		if err != nil {
-			t.Errorf("%s", err.Error())
-			return
-		}
-
-		res := bson.M{}
-		if err := hydrated.Decode(&res); err != nil {
-			t.Errorf("%s", err.Error())
-			return
-		}
-
-		fmt.Println(res)
-	*/
 }

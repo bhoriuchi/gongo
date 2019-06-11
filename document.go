@@ -75,35 +75,49 @@ func (c *Document) Set(path string, value interface{}) error {
 	return nil
 }
 
+// Validate validates the document proposed changes
+func (c *Document) Validate() error {
+	if _, err := c.model.schema.walk(c.next, []string{}, &walkOptions{
+		applySetters:     false,
+		applyDefaults:    false,
+		castObjectID:     false,
+		validateTypes:    true,
+		validateCustom:   true,
+		validateRequired: true,
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
 // loads document data
 func (c *Document) load(document interface{}, schema *Schema) error {
 	// first conver to a map
-	doc := bson.M{}
 	prev := bson.M{}
 	next := bson.M{}
 
-	// convert to bson
-	if document != nil {
-		if err := c.model.gongo.weakDecode(document, &doc); err != nil {
-			return err
-		}
-	}
+	cur, err := c.model.schema.walk(document, []string{}, &walkOptions{
+		applySetters:     true,
+		applyDefaults:    false,
+		castObjectID:     true,
+		validateTypes:    true,
+		validateCustom:   false,
+		validateRequired: false,
+	})
 
-	setDoc, err := schema.applyVirtualSetters(doc)
 	if err != nil {
 		return err
 	}
 
-	// filter non-schema fields and _id
-	cur := schema.filterUndefined(setDoc, c.model)
-	if cur != nil {
-		m := *cur
-		if id, ok := m["_id"]; ok {
-			c.id = id
-		}
+	// get the id
+	doc := *c.cur
+	if id, ok := doc["_id"]; ok {
+		c.id = id
 	}
 
-	// copy to prev and next
+	c.cur = cur
+
+	// copy cur to prev and next
 	if err := c.model.gongo.weakDecode(cur, &prev); err != nil {
 		return err
 	}
@@ -112,9 +126,7 @@ func (c *Document) load(document interface{}, schema *Schema) error {
 	}
 
 	c.prev = &prev
-	c.cur = cur
 	c.next = &next
-
 	return nil
 }
 
@@ -193,25 +205,28 @@ func (c *Document) Save(timeout ...*int) error {
 		return err
 	}
 
-	// first create a working document
-	doc := bson.M{}
-	if err := c.model.gongo.weakDecode(c.next, &doc); err != nil {
+	// create a working documnet
+	doc := &bson.M{}
+	if err := c.model.gongo.weakDecode(c.next, doc); err != nil {
 		return err
 	}
 
 	// apply pre-middleware
-	if err := c.model.schema.applyPreMiddleware("save", doc); err != nil {
+	if err := c.model.schema.applyPreMiddleware("save", *doc); err != nil {
 		return err
 	}
 
-	// filter undefined fields
-	document := c.model.schema.filterUndefined(&doc, c.model)
+	// walk document with full validation
+	document, err := c.model.schema.walk(doc, []string{}, &walkOptions{
+		applySetters:     true,
+		applyDefaults:    true,
+		castObjectID:     true,
+		validateTypes:    true,
+		validateCustom:   true,
+		validateRequired: true,
+	})
 
-	// apply defaults
-	c.model.schema.setDefaults(*document)
-
-	// validate the document
-	if err := c.model.schema.validate(document, []string{}, false, c.model); err != nil {
+	if err != nil {
 		return err
 	}
 
@@ -245,8 +260,7 @@ func (c *Document) Save(timeout ...*int) error {
 	}
 
 	// apply post middleware
-	err := c.model.schema.applyPostMiddleware("save", doc, nil)
-	if err != nil {
+	if err := c.model.schema.applyPostMiddleware("save", *document, nil); err != nil {
 		return err
 	}
 

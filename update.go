@@ -55,21 +55,21 @@ func (c *Model) FindOneAndUpdateWithTimeout(
 		return nil, err
 	}
 
-	document, err := c.schema.applyVirtualSetters(doc)
-	if err != nil {
-		return nil, err
-	}
-
 	// apply pre-middleware
-	if err := c.schema.applyPreMiddleware("findOneAndUpdate", *document); err != nil {
+	if err := c.schema.applyPreMiddleware("findOneAndUpdate", doc); err != nil {
 		return nil, err
 	}
 
-	// filter undefined fields
-	document = c.schema.filterUndefined(document, c)
+	document, err := c.schema.walk(doc, []string{}, &walkOptions{
+		applySetters:     true,
+		applyDefaults:    false,
+		castObjectID:     true,
+		validateTypes:    true,
+		validateCustom:   true,
+		validateRequired: false,
+	})
 
-	// validate the document
-	if err := c.schema.validate(document, []string{}, true, c); err != nil {
+	if err != nil {
 		return nil, err
 	}
 

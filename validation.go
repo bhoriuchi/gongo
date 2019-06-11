@@ -1,5 +1,6 @@
 package gongo
 
+/*
 import (
 	"fmt"
 	"reflect"
@@ -203,3 +204,4 @@ func (c *Schema) filterUndefined(doc *bson.M, model *Model) *bson.M {
 
 	return &result
 }
+*/

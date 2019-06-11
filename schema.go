@@ -11,18 +11,20 @@ import (
 
 // Built-in types
 const (
-	StringType = "String"
-	IntType    = "Int"
-	FloatType  = "Float"
-	BoolType   = "Bool"
-	MixedType  = "Mixed"
-	ObjectID   = "ObjectID"
+	StringType   = "String"
+	IntType      = "Int"
+	FloatType    = "Float"
+	BoolType     = "Bool"
+	MixedType    = "Mixed"
+	ObjectIDType = "ObjectID"
 )
 
+var schemaTypeReference = Schema{}
 var intRx = regexp.MustCompile(`^\d+$`)
 
 // Schema a schema definition
 type Schema struct {
+	gongo       *Gongo
 	Fields      SchemaFieldMap
 	Options     *SchemaOptions
 	Virtuals    *VirtualFieldMap
@@ -42,6 +44,17 @@ func (c *Schema) init() error {
 			return err
 		}
 	}
+
+	if c.Options == nil {
+		c.Options = &SchemaOptions{}
+	}
+	if c.Virtuals == nil {
+		c.Virtuals = &VirtualFieldMap{}
+	}
+	if c.middleware == nil {
+		c.middleware = &middlewareConfig{}
+	}
+
 	c.initialized = true
 	return nil
 }
@@ -69,6 +82,7 @@ func (c *Schema) copy() *Schema {
 	}
 
 	newSchema := Schema{
+		gongo:      c.gongo,
 		Fields:     c.Fields.copy(),
 		Options:    &options,
 		Virtuals:   &virtuals,
@@ -112,15 +126,15 @@ func (c *SchemaField) init(name string) error {
 	}
 
 	// determine if element type is a valid one
-	if helpers.GetElement(c.elementType).Type() == reflect.TypeOf(Schema{}) {
-		// if the element is a schema, try to initialize it
-		schema := helpers.GetElement(c.elementType).Interface().(Schema)
-		schema.init()
+	if schema := getSchema(c.elementType); schema != nil {
+		if err := schema.init(); err != nil {
+			return err
+		}
 		return nil
 	}
 
 	switch c.elementType {
-	case StringType, IntType, FloatType, BoolType, MixedType:
+	case StringType, IntType, FloatType, BoolType, MixedType, ObjectIDType:
 		return nil
 	}
 
@@ -225,13 +239,20 @@ func (c *Schema) hasFieldPath(fieldPath []string) bool {
 			remaining = remaining[1:]
 		}
 
-		el := helpers.GetElement(field.elementType)
-		if el.Type() != reflect.TypeOf(Schema{}) {
-			return false
+		if s := getSchema(field.elementType); s != nil {
+			return s.hasFieldPath(remaining)
 		}
-		s := el.Interface().(Schema)
-		return s.hasFieldPath(remaining)
 	}
 
 	return false
+}
+
+// Schema type checker
+func getSchema(obj interface{}) *Schema {
+	el := helpers.GetElement(obj)
+	if el.Type() == reflect.TypeOf(schemaTypeReference) {
+		s := el.Interface().(Schema)
+		return &s
+	}
+	return nil
 }

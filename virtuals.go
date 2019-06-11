@@ -68,6 +68,10 @@ func (c *Schema) Virtual(config *VirtualConfig) *Schema {
 // and keeping the non-virtual fields
 // TODO: support nested virtuals
 func (c *Schema) applyVirtualSetters(doc bson.M) (*bson.M, error) {
+	if c.Virtuals == nil {
+		return &doc, nil
+	}
+
 	virtuals := *c.Virtuals
 	newDoc := bson.M{}
 	for k, v := range doc {
@@ -84,6 +88,10 @@ func (c *Schema) applyVirtualSetters(doc bson.M) (*bson.M, error) {
 
 // apply virtuals getters
 func (c *Schema) applyVirtualGetters(doc bson.M) error {
+	if c.Virtuals == nil {
+		return nil
+	}
+
 	for _, v := range *c.Virtuals {
 		value, err := v.Get(doc)
 		if err != nil {
